@@ -43,7 +43,7 @@ Globals:
     Runtime: python3.12
     Environment:
       Variables:
-        AWS_REGION: !Ref AWS::Region
+        # Note: AWS_REGION is automatically provided by Lambda runtime
         DYNAMODB_TABLE_PREFIX: !Ref Environment
         JWT_SECRET: !Ref JWTSecret
         REFRESH_TOKEN_SECRET: !Ref RefreshTokenSecret
