@@ -20,19 +20,20 @@ def success_response(data: Any = None, message: str = "Success", status_code: in
 
     Returns:
         {
-          "success": true,
-          "status_code": 200,
-          "message": "...",
-          "data": {...},
-          "error": null,
-          "meta": {}
+          "statusCode": 200,
+          "body": {
+            "success": true,
+            "message": "...",
+            "data": {...},
+            "error": null,
+            "meta": {}
+          }
         }
     """
     return {
         'statusCode': status_code,
         'body': {
             'success': True,
-            'status_code': status_code,
             'message': message,
             'data': data,
             'error': None,
@@ -53,15 +54,17 @@ def error_response(message: str, status_code: int = 400, error_code: Optional[st
 
     Returns:
         {
-          "success": false,
-          "status_code": 400,
-          "message": "...",
-          "data": null,
-          "error": {
-            "code": "ERROR_CODE",
-            "details": {...}
-          },
-          "meta": {}
+          "statusCode": 400,
+          "body": {
+            "success": false,
+            "message": "...",
+            "data": null,
+            "error": {
+              "code": "ERROR_CODE",
+              "details": {...}
+            },
+            "meta": {}
+          }
         }
     """
     error_obj = {}
@@ -74,7 +77,6 @@ def error_response(message: str, status_code: int = 400, error_code: Optional[st
         'statusCode': status_code,
         'body': {
             'success': False,
-            'status_code': status_code,
             'message': message,
             'data': None,
             'error': error_obj if error_obj else None,
