@@ -1,0 +1,94 @@
+# ========================================
+# Environment and Secrets
+# ========================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ========================================
+# AWS SAM
+# ========================================
+.aws-sam/
+samconfig.toml.backup
+packaged.yaml
+packaged.json
+
+# ========================================
+# Python
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# ========================================
+# Deployment Artifacts
+# ========================================
+package/
+*.zip
+lambda-deployment.zip
+
+# ========================================
+# IDE and Editors
+# ========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ========================================
+# Testing
+# ========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# ========================================
+# Logs
+# ========================================
+*.log
+logs/
+
+# ========================================
+# OS Files
+# ========================================
+Thumbs.db
+.DS_Store
+
+# ========================================
+# Temporary Files
+# ========================================
+*.tmp
+*.temp
+.cache/

@@ -1,0 +1,366 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Basic Authentication API with JWT, DynamoDB, and Lambda
+
+# ========================================
+# Parameters - Override during deployment
+# ========================================
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name for resource naming
+
+  JWTSecret:
+    Type: String
+    NoEcho: true
+    Description: Secret key for JWT token signing
+    Default: change-this-to-a-long-random-secret-key
+
+  RefreshTokenSecret:
+    Type: String
+    NoEcho: true
+    Description: Secret key for refresh token signing
+    Default: change-this-to-another-long-random-secret-key
+
+  MasterSecretKey:
+    Type: String
+    NoEcho: true
+    Description: Secret key for master user registration
+    Default: your-super-secret-master-key-here
+
+# ========================================
+# Global Configuration
+# ========================================
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        AWS_REGION: !Ref AWS::Region
+        DYNAMODB_TABLE_PREFIX: !Ref Environment
+        JWT_SECRET: !Ref JWTSecret
+        REFRESH_TOKEN_SECRET: !Ref RefreshTokenSecret
+        MASTER_SECRET_KEY: !Ref MasterSecretKey
+        ACCESS_TOKEN_EXPIRY: 1800
+        REFRESH_TOKEN_EXPIRY: 2592000
+        VERIFICATION_CODE_EXPIRY: 600
+        LOGIN_RATE_LIMIT: 10
+        REGISTER_RATE_LIMIT: 100
+        API_RATE_LIMIT: 100
+        MAX_FAILED_LOGIN_ATTEMPTS: 5
+
+# ========================================
+# Resources
+# ========================================
+Resources:
+  # ========================================
+  # Lambda Function
+  # ========================================
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${Environment}-basic-auth-api
+      CodeUri: .
+      Handler: lambda_function.lambda_handler
+      Description: Basic Authentication API with JWT
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RefreshTokensTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VerificationCodesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LoginAttemptsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RateLimitsTable
+      Events:
+        # Auth Endpoints
+        RegisterAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/register
+            Method: POST
+        RegisterMasterAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/register-master
+            Method: POST
+        VerifyAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/verify
+            Method: POST
+        LoginAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/login
+            Method: POST
+        RefreshAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/refresh
+            Method: POST
+        LogoutAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/logout
+            Method: POST
+        GetMeAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/me
+            Method: GET
+        UpdateMeAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/me
+            Method: PUT
+        # User Management Endpoints
+        ListUsersAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /users
+            Method: GET
+        GetUserAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /users/{id}
+            Method: GET
+        UpdateUserRoleAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /users/{id}/role
+            Method: PUT
+        DeleteUserAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /users/{id}
+            Method: DELETE
+
+  # ========================================
+  # API Gateway
+  # ========================================
+  AuthAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${Environment}-basic-auth-api
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      DefinitionBody:
+        swagger: "2.0"
+        info:
+          title: !Sub ${Environment}-basic-auth-api
+        paths:
+          /auth/register:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/register-master:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/verify:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/login:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/refresh:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/logout:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/me:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+            put:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /users:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /users/{id}:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+            delete:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /users/{id}/role:
+            put:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+
+  # ========================================
+  # DynamoDB Tables
+  # ========================================
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}_users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  RefreshTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}_refresh_tokens
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: expires_at
+
+  VerificationCodesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}_verification_codes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: code_type
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: code_type
+          KeyType: RANGE
+
+  LoginAttemptsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}_login_attempts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ip_address
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ip_address
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  RateLimitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Environment}_rate_limits
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: limit_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: limit_key
+          KeyType: HASH
+
+# ========================================
+# Outputs
+# ========================================
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${AuthAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/
+    Export:
+      Name: !Sub ${Environment}-BasicAuthApiUrl
+
+  AuthFunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt AuthFunction.Arn
+    Export:
+      Name: !Sub ${Environment}-BasicAuthFunctionArn
+
+  UsersTableName:
+    Description: DynamoDB Users Table Name
+    Value: !Ref UsersTable
+    Export:
+      Name: !Sub ${Environment}-UsersTableName
+
+  ApiId:
+    Description: API Gateway ID
+    Value: !Ref AuthAPI
+    Export:
+      Name: !Sub ${Environment}-BasicAuthApiId
