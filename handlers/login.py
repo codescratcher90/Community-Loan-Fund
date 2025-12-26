@@ -112,12 +112,11 @@ def login(event, context):
         return success_response(
             data={
                 'user': {
-                    'id': user['user_id'],
+                    'user_id': user['user_id'],
                     'email': user['email'],
                     'first_name': user.get('first_name'),
                     'last_name': user.get('last_name'),
-                    'global_role': user['role'],
-                    'can_switch_schools': False  # Can be updated based on your business logic
+                    'global_role': user['role']
                 },
                 'tokens': {
                     'access': access_token,

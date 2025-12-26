@@ -18,12 +18,6 @@ def success_response(data: Any = None, message: str = "Success", status_code: in
     """
     return {
         'statusCode': status_code,
-        'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-            'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
         'body': {
             'success': True,
             'status_code': status_code,
@@ -59,12 +53,6 @@ def error_response(message: str, status_code: int = 400, error_code: Optional[st
 
     return {
         'statusCode': status_code,
-        'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-            'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
         'body': {
             'success': False,
             'status_code': status_code,
