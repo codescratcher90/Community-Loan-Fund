@@ -93,19 +93,35 @@ def lambda_handler(event: Dict[str, Any], context):
         handler_func = ROUTES.get(route_key)
         if handler_func:
             print(f"Found handler for route: {route_key}")
-            # Pass both body and context to the handler
+            # Handler returns {statusCode, body}
             result = handler_func(event, context)
+            print("Handler result:", result)
+
+            # Extract statusCode and body from handler response
+            status_code = result.get('statusCode', 200)
+            response_body = result.get('body', result)
+
+            return {
+                "statusCode": status_code,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps(response_body)
+            }
         else:
             print(f"No handler found for route: {route_key}")
-            result = {"error": "Unknown route", "route": route_key}
-
-        print("Final result before return:", result)
-
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(result)
-        }
+            return {
+                "statusCode": 404,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "success": False,
+                    "message": "Route not found",
+                    "data": None,
+                    "error": {
+                        "code": "ROUTE_NOT_FOUND",
+                        "details": {"route": route_key}
+                    },
+                    "meta": {}
+                })
+            }
 
     except Exception as e:
         print("=== EXCEPTION CAUGHT ===")
@@ -115,7 +131,16 @@ def lambda_handler(event: Dict[str, Any], context):
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": str(e)})
+            "body": json.dumps({
+                "success": False,
+                "message": "Internal server error",
+                "data": None,
+                "error": {
+                    "code": "INTERNAL_SERVER_ERROR",
+                    "details": {"error": str(e)}
+                },
+                "meta": {}
+            })
         }
 
     finally:
