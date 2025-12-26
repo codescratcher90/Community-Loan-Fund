@@ -46,7 +46,10 @@ jobs:
       - name: Deploy to AWS
         run: |
           sam deploy \
-            --config-env dev \
+            --stack-name basic-auth-dev \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ secrets.AWS_REGION }} \
+            --resolve-s3 \
             --parameter-overrides \
               Environment=dev \
               JWTSecret=${{ secrets.JWT_SECRET }} \

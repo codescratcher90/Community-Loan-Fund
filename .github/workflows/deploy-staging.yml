@@ -45,7 +45,10 @@ jobs:
       - name: Deploy to AWS
         run: |
           sam deploy \
-            --config-env staging \
+            --stack-name basic-auth-staging \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ secrets.AWS_REGION }} \
+            --resolve-s3 \
             --parameter-overrides \
               Environment=staging \
               JWTSecret=${{ secrets.JWT_SECRET }} \

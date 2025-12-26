@@ -59,7 +59,10 @@ jobs:
       - name: Deploy to AWS Production
         run: |
           sam deploy \
-            --config-env prod \
+            --stack-name basic-auth-prod \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ secrets.AWS_REGION }} \
+            --resolve-s3 \
             --parameter-overrides \
               Environment=prod \
               JWTSecret=${{ secrets.JWT_SECRET_PROD }} \
