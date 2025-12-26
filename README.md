@@ -211,94 +211,564 @@ curl -X POST $API_URL/auth/login \
 
 ### Example Requests
 
+#### Authentication Endpoints
+
 <details>
-<summary><b>Register New User</b></summary>
+<summary><b>1. Register New User - POST /auth/register</b></summary>
 
+Register a new user account. Email and SMS verification codes will be sent.
+
+**Request:**
 ```bash
-POST /auth/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "SecurePass123",
-  "first_name": "John",
-  "last_name": "Doe",
-  "phone": "+1234567890"
-}
+curl -X POST https://your-api-url.com/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123",
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone": "+1234567890"
+  }'
 ```
 
-**Response:**
+**Response (201 Created):**
 ```json
 {
   "success": true,
+  "status_code": 201,
   "message": "Registration successful. Please verify your email and phone.",
   "data": {
-    "user_id": "uuid-here",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "email": "user@example.com",
     "first_name": "John",
     "last_name": "Doe",
+    "phone": "+1234567890",
     "role": "user",
     "is_verified": false,
-    "created_at": "2024-01-15T10:30:00Z"
-  }
+    "created_at": "2025-12-26T10:30:00.000000"
+  },
+  "error": null,
+  "meta": {}
 }
 ```
 </details>
 
 <details>
-<summary><b>Login</b></summary>
+<summary><b>2. Register Master User - POST /auth/register-master</b></summary>
 
+Create a master user account. Requires the master secret key. Master users are automatically verified.
+
+**Request:**
 ```bash
-POST /auth/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "SecurePass123"
-}
+curl -X POST https://your-api-url.com/auth/register-master \
+  -H "Content-Type: application/json" \
+  -d '{
+    "secret_key": "your-master-secret-key",
+    "email": "admin@example.com",
+    "password": "SecurePass123",
+    "first_name": "Admin",
+    "last_name": "User"
+  }'
 ```
 
-**Response:**
+**Response (201 Created):**
 ```json
 {
   "success": true,
+  "status_code": 201,
+  "message": "Master user created successfully",
+  "data": {
+    "user_id": "660f9511-f39c-52e5-b827-557766551111",
+    "email": "admin@example.com",
+    "first_name": "Admin",
+    "last_name": "User",
+    "phone": "",
+    "role": "master",
+    "is_verified": true,
+    "created_at": "2025-12-26T10:35:00.000000"
+  },
+  "error": null,
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>3. Verify Email/SMS Code - POST /auth/verify</b></summary>
+
+Verify the email or SMS verification code sent during registration.
+
+**Request:**
+```bash
+curl -X POST https://your-api-url.com/auth/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "code": "123456",
+    "code_type": "email"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Email verified successfully",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "is_verified": true,
+    "email_verified": true,
+    "phone_verified": true
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Note:** For SMS verification, use `"code_type": "sms"`. The user is fully verified only when both email and phone (if provided) are verified.
+</details>
+
+<details>
+<summary><b>4. Login - POST /auth/login</b></summary>
+
+Authenticate a user and receive access and refresh tokens.
+
+**Request:**
+```bash
+curl -X POST https://your-api-url.com/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
   "message": "Login successful",
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "token_type": "Bearer",
-    "expires_in": 1800,
     "user": {
-      "user_id": "uuid-here",
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
       "email": "user@example.com",
+      "first_name": "John",
+      "last_name": "Doe",
+      "phone": "+1234567890",
       "role": "user"
+    },
+    "tokens": {
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwicm9sZSI6InVzZXIiLCJleHAiOjE3MDUzOTY4MDB9.example",
+      "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiZXhwIjoxNzA2MDAxNjAwfQ.example",
+      "type": "Bearer",
+      "expires_in": 1800
     }
-  }
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Note:** Access token expires in 30 minutes (1800 seconds), refresh token expires in 7 days.
+</details>
+
+<details>
+<summary><b>5. Refresh Access Token - POST /auth/refresh</b></summary>
+
+Get a new access token using a valid refresh token.
+
+**Request:**
+```bash
+curl -X POST https://your-api-url.com/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Token refreshed successfully",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.newtoken...",
+    "token_type": "Bearer",
+    "expires_in": 1800
+  },
+  "error": null,
+  "meta": {}
 }
 ```
 </details>
 
 <details>
-<summary><b>Get Current User Profile</b></summary>
+<summary><b>6. Logout - POST /auth/logout</b></summary>
 
+Logout user by revoking their refresh token. Requires authentication.
+
+**Request:**
 ```bash
-GET /auth/me
-Authorization: Bearer <access_token>
+curl -X POST https://your-api-url.com/auth/logout \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
 ```
 
-**Response:**
+**Response (200 OK):**
 ```json
 {
   "success": true,
+  "status_code": 200,
+  "message": "Logged out successfully",
+  "data": null,
+  "error": null,
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>7. Get Current User Profile - GET /auth/me</b></summary>
+
+Get the authenticated user's profile information.
+
+**Request:**
+```bash
+curl -X GET https://your-api-url.com/auth/me \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Success",
   "data": {
-    "user_id": "uuid-here",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "email": "user@example.com",
     "first_name": "John",
     "last_name": "Doe",
+    "phone": "+1234567890",
     "role": "user",
     "is_verified": true,
-    "created_at": "2024-01-15T10:30:00Z"
-  }
+    "is_locked": false,
+    "created_at": "2025-12-26T10:30:00.000000",
+    "updated_at": "2025-12-26T10:30:00.000000"
+  },
+  "error": null,
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>8. Update Current User Profile - PUT /auth/me</b></summary>
+
+Update the authenticated user's profile. Can update name, phone, and password.
+
+**Request:**
+```bash
+curl -X PUT https://your-api-url.com/auth/me \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "first_name": "Johnny",
+    "last_name": "Doe",
+    "phone": "+1987654321"
+  }'
+```
+
+**Request (Change Password):**
+```bash
+curl -X PUT https://your-api-url.com/auth/me \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "current_password": "SecurePass123",
+    "password": "NewSecurePass456"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Profile updated successfully",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "first_name": "Johnny",
+    "last_name": "Doe",
+    "phone": "+1987654321",
+    "role": "user",
+    "updated_at": "2025-12-26T11:00:00.000000"
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Note:** To change password, you must provide `current_password` and the new `password`.
+</details>
+
+#### User Management Endpoints
+
+<details>
+<summary><b>9. List All Users - GET /users</b></summary>
+
+Get a list of all users. Requires admin or master role.
+
+**Request:**
+```bash
+curl -X GET "https://your-api-url.com/users?limit=100" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Success",
+  "data": {
+    "users": [
+      {
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "email": "user@example.com",
+        "first_name": "John",
+        "last_name": "Doe",
+        "phone": "+1234567890",
+        "role": "user",
+        "is_verified": true,
+        "is_locked": false,
+        "created_at": "2025-12-26T10:30:00.000000"
+      },
+      {
+        "user_id": "660f9511-f39c-52e5-b827-557766551111",
+        "email": "admin@example.com",
+        "first_name": "Admin",
+        "last_name": "User",
+        "phone": "",
+        "role": "master",
+        "is_verified": true,
+        "is_locked": false,
+        "created_at": "2025-12-26T10:35:00.000000"
+      }
+    ],
+    "count": 2
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Query Parameters:**
+- `limit` (optional): Maximum number of users to return (default: 100)
+</details>
+
+<details>
+<summary><b>10. Get User by ID - GET /users/{id}</b></summary>
+
+Get detailed information about a specific user. Requires admin or master role.
+
+**Request:**
+```bash
+curl -X GET https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Success",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone": "+1234567890",
+    "role": "user",
+    "is_verified": true,
+    "is_locked": false,
+    "email_verified": true,
+    "phone_verified": true,
+    "failed_login_attempts": 0,
+    "created_at": "2025-12-26T10:30:00.000000",
+    "updated_at": "2025-12-26T10:30:00.000000"
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Error Response (404 Not Found):**
+```json
+{
+  "success": false,
+  "status_code": 404,
+  "message": "User not found",
+  "data": null,
+  "error": {
+    "code": "NOT_FOUND"
+  },
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>11. Update User Role - PUT /users/{id}/role</b></summary>
+
+Update a user's role. Requires admin or master role. Role hierarchy: master > admin > user.
+
+**Request:**
+```bash
+curl -X PUT https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000/role \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "role": "admin"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "User role updated to admin",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "role": "admin",
+    "updated_at": "2025-12-26T11:15:00.000000"
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Valid Roles:**
+- `user` - Regular user (default)
+- `admin` - Administrator (can manage users, cannot create masters)
+- `master` - Master administrator (full access)
+
+**Error Response (403 Forbidden):**
+```json
+{
+  "success": false,
+  "status_code": 403,
+  "message": "You don't have permission to change this user's role to the specified role",
+  "data": null,
+  "error": {
+    "code": "FORBIDDEN"
+  },
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>12. Delete User - DELETE /users/{id}</b></summary>
+
+Delete a user account. Requires master role. Cannot delete your own account.
+
+**Request:**
+```bash
+curl -X DELETE https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "User deleted successfully",
+  "data": null,
+  "error": null,
+  "meta": {}
+}
+```
+
+**Error Response (400 Bad Request - Self Deletion):**
+```json
+{
+  "success": false,
+  "status_code": 400,
+  "message": "Cannot delete your own account",
+  "data": null,
+  "error": null,
+  "meta": {}
+}
+```
+
+**Note:** This also deletes all associated refresh tokens for the user.
+</details>
+
+#### Error Response Examples
+
+<details>
+<summary><b>Validation Error (422)</b></summary>
+
+```json
+{
+  "success": false,
+  "status_code": 422,
+  "message": "Validation failed",
+  "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": {
+      "email": "Invalid email format",
+      "password": "Password must be at least 8 characters"
+    }
+  },
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>Unauthorized (401)</b></summary>
+
+```json
+{
+  "success": false,
+  "status_code": 401,
+  "message": "Invalid or expired token",
+  "data": null,
+  "error": {
+    "code": "UNAUTHORIZED"
+  },
+  "meta": {}
+}
+```
+</details>
+
+<details>
+<summary><b>Rate Limit Exceeded (429)</b></summary>
+
+```json
+{
+  "success": false,
+  "status_code": 429,
+  "message": "Rate limit exceeded - Too many requests",
+  "data": null,
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED"
+  },
+  "meta": {}
 }
 ```
 </details>
