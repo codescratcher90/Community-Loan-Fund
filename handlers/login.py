@@ -116,7 +116,7 @@ def login(event, context):
                     'email': user['email'],
                     'first_name': user.get('first_name'),
                     'last_name': user.get('last_name'),
-                    'global_role': user['role']
+                    'role': user['role']
                 },
                 'tokens': {
                     'access': access_token,
