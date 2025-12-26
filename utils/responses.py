@@ -3,9 +3,18 @@ Response Utilities
 """
 from typing import Any, Dict, Optional
 
-def success_response(data: Any = None, message: str = "Success", status_code: int = 200) -> Dict:
+def success_response(data: Any = None, message: str = "Success", status_code: int = 200, meta: Optional[Dict] = None) -> Dict:
     """
-    Create a success response
+    Create a unified success response
+    Format:
+    {
+      "success": true,
+      "status_code": 200,
+      "message": "...",
+      "data": {...},
+      "error": null,
+      "meta": {}
+    }
     """
     return {
         'statusCode': status_code,
@@ -17,24 +26,37 @@ def success_response(data: Any = None, message: str = "Success", status_code: in
         },
         'body': {
             'success': True,
+            'status_code': status_code,
             'message': message,
-            'data': data
+            'data': data,
+            'error': None,
+            'meta': meta or {}
         }
     }
 
 
-def error_response(message: str, status_code: int = 400, error_code: Optional[str] = None) -> Dict:
+def error_response(message: str, status_code: int = 400, error_code: Optional[str] = None, error_details: Optional[Dict] = None) -> Dict:
     """
-    Create an error response
-    """
-    body = {
-        'success': False,
-        'message': message
+    Create a unified error response
+    Format:
+    {
+      "success": false,
+      "status_code": 400,
+      "message": "...",
+      "data": null,
+      "error": {
+        "code": "ERROR_CODE",
+        "details": {...}
+      },
+      "meta": {}
     }
-    
+    """
+    error_obj = {}
     if error_code:
-        body['error_code'] = error_code
-    
+        error_obj['code'] = error_code
+    if error_details:
+        error_obj['details'] = error_details
+
     return {
         'statusCode': status_code,
         'headers': {
@@ -43,7 +65,14 @@ def error_response(message: str, status_code: int = 400, error_code: Optional[st
             'Access-Control-Allow-Headers': 'Content-Type,Authorization',
             'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
         },
-        'body': body
+        'body': {
+            'success': False,
+            'status_code': status_code,
+            'message': message,
+            'data': None,
+            'error': error_obj if error_obj else None,
+            'meta': {}
+        }
     }
 
 
@@ -79,7 +108,9 @@ def validation_error_response(message: str, errors: Optional[Dict] = None) -> Di
     """
     Create a validation error (422) response
     """
-    response = error_response(message, status_code=422, error_code='VALIDATION_ERROR')
-    if errors:
-        response['body']['errors'] = errors
-    return response
+    return error_response(
+        message=message,
+        status_code=422,
+        error_code='VALIDATION_ERROR',
+        error_details=errors
+    )
