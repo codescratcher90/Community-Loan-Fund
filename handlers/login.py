@@ -90,36 +90,45 @@ def login(event, context):
             user['email'],
             user['role']
         )
-        
+
         refresh_token = generate_refresh_token(user['user_id'])
-        
+
         # Store refresh token
+        current_timestamp = datetime.utcnow().timestamp()
+        expires_at_timestamp = int(current_timestamp + config.REFRESH_TOKEN_EXPIRY)
+
         refresh_token_data = {
             'token': refresh_token,
             'user_id': user['user_id'],
             'created_at': datetime.utcnow().isoformat(),
-            'expires_at': Decimal(str(datetime.utcnow().timestamp() + config.REFRESH_TOKEN_EXPIRY))
-
+            'expires_at': Decimal(str(expires_at_timestamp))
         }
         RefreshTokenDB.create_token(refresh_token_data)
-        print("[DEBUG] refresh_token_data:", refresh_token_data)
-        print("[DEBUG] expires_at type:", type(refresh_token_data["expires_at"]))
-        # Return tokens and user data
+
+        # Calculate access token expiration
+        access_expires_at = int(current_timestamp + config.ACCESS_TOKEN_EXPIRY)
+
+        # Return unified response with separate user and tokens sections
         return success_response(
             data={
-                'access_token': access_token,
-                'refresh_token': refresh_token,
-                'token_type': 'Bearer',
-                'expires_in': config.ACCESS_TOKEN_EXPIRY,
                 'user': {
-                    'user_id': user['user_id'],
+                    'id': user['user_id'],
                     'email': user['email'],
-                    'first_name': user['first_name'],
-                    'last_name': user['last_name'],
-                    'role': user['role']
+                    'first_name': user.get('first_name'),
+                    'last_name': user.get('last_name'),
+                    'global_role': user['role'],
+                    'can_switch_schools': False  # Can be updated based on your business logic
+                },
+                'tokens': {
+                    'access': access_token,
+                    'refresh': refresh_token,
+                    'type': 'Bearer',
+                    'expires_in': config.ACCESS_TOKEN_EXPIRY,
+                    'expires_at': access_expires_at
                 }
             },
-            message="Login successful"
+            message="Login successful",
+            status_code=200
         )
         
     except json.JSONDecodeError:
