@@ -34,6 +34,7 @@ def success_response(data: Any = None, message: str = "Success", status_code: in
         'statusCode': status_code,
         'body': {
             'success': True,
+            'status_code': status_code,
             'message': message,
             'data': data,
             'error': None,
@@ -77,6 +78,7 @@ def error_response(message: str, status_code: int = 400, error_code: Optional[st
         'statusCode': status_code,
         'body': {
             'success': False,
+            'status_code': status_code,
             'message': message,
             'data': None,
             'error': error_obj if error_obj else None,
