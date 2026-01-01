@@ -194,6 +194,10 @@ nano .env  # or use your preferred editor
 **Required configuration in `.env`:**
 
 ```bash
+# Application Configuration
+APP_NAME=basic-auth           # Your app name (customize for white-label deployments)
+ENVIRONMENT=dev               # dev, staging, or prod
+
 # Generate secure secrets using:
 openssl rand -base64 32
 
@@ -204,20 +208,64 @@ MASTER_SECRET_KEY=<your-generated-secret>
 
 # Set your AWS region
 AWS_REGION=eu-north-1  # or your preferred region
-
-# Set environment prefix
-DYNAMODB_TABLE_PREFIX=dev  # dev, staging, or prod
 ```
 
-### 4. Deploy to AWS
+### 4. Customize Your Deployment (Optional but Recommended!)
+
+**For White-Label / Multi-Tenant Deployments:**
+
+You can customize the app name to deploy multiple instances or create white-label versions:
 
 ```bash
-# Deploy to development environment
-./deploy-sam.sh dev
+# Hotel Management System
+export APP_NAME=hotel-manager
+export ENVIRONMENT=prod
+./deploy-sam.sh
 
-# Or deploy to other environments
-./deploy-sam.sh staging
-./deploy-sam.sh prod
+# Restaurant POS System
+export APP_NAME=restaurant-pos
+export ENVIRONMENT=prod
+./deploy-sam.sh
+
+# Gym Management
+export APP_NAME=gymflow
+export ENVIRONMENT=dev
+./deploy-sam.sh
+```
+
+**Benefits:**
+- ✅ Multiple deployments in the same AWS account
+- ✅ No resource name conflicts
+- ✅ White-label your auth system for different clients
+- ✅ Separate production, staging, and dev for each client
+
+**Resource Naming:**
+All resources will be named `{APP_NAME}-{ENVIRONMENT}-{resource}`:
+- Tables: `hotel-manager-prod-users`, `hotel-manager-prod-tokens`
+- Lambda: `hotel-manager-prod-api`
+- API Gateway: `hotel-manager-prod-api`
+
+### 5. Deploy to AWS
+
+The deployment script will prompt for app name and environment if not set:
+
+```bash
+# Interactive deployment (prompts for app name and environment)
+./deploy-sam.sh
+
+# Or set via environment variables
+APP_NAME=my-app ENVIRONMENT=dev ./deploy-sam.sh
+```
+
+**Example output:**
+```
+Enter application name (default: basic-auth): hotel-manager
+Enter environment (dev/staging/prod) [default: dev]: prod
+
+Deployment Configuration:
+  App Name:    hotel-manager
+  Environment: prod
+  Stack Name:  hotel-manager-prod
 ```
 
 The deployment script will:
@@ -228,7 +276,7 @@ The deployment script will:
 - ✅ Configure API Gateway
 - ✅ Display your API endpoint URL
 
-### 5. Test Your API
+### 6. Test Your API
 
 After deployment, you'll receive an API URL. Test it:
 

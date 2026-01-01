@@ -6,6 +6,13 @@ Description: Basic Authentication API with JWT, DynamoDB, and Lambda
 # Parameters - Override during deployment
 # ========================================
 Parameters:
+  AppName:
+    Type: String
+    Default: basic-auth
+    Description: Application name for resource naming (allows multiple deployments)
+    AllowedPattern: ^[a-z0-9][a-z0-9-]*[a-z0-9]$
+    ConstraintDescription: Must be lowercase alphanumeric with hyphens, start and end with alphanumeric
+
   Environment:
     Type: String
     Default: dev
@@ -44,7 +51,9 @@ Globals:
     Environment:
       Variables:
         # Note: AWS_REGION is automatically provided by Lambda runtime
-        DYNAMODB_TABLE_PREFIX: !Ref Environment
+        APP_NAME: !Ref AppName
+        ENVIRONMENT: !Ref Environment
+        DYNAMODB_TABLE_PREFIX: !Sub ${AppName}-${Environment}  # Legacy support
         JWT_SECRET: !Ref JWTSecret
         REFRESH_TOKEN_SECRET: !Ref RefreshTokenSecret
         MASTER_SECRET_KEY: !Ref MasterSecretKey
@@ -66,7 +75,7 @@ Resources:
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${Environment}-basic-auth-api
+      FunctionName: !Sub ${AppName}-${Environment}-api
       CodeUri: .
       Handler: lambda_function.lambda_handler
       Description: Basic Authentication API with JWT
@@ -163,7 +172,7 @@ Resources:
   AuthAPI:
     Type: AWS::Serverless::Api
     Properties:
-      Name: !Sub ${Environment}-basic-auth-api
+      Name: !Sub ${AppName}-${Environment}-api
       StageName: !Ref Environment
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
@@ -251,7 +260,7 @@ Resources:
   UsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}_users
+      TableName: !Sub ${AppName}-${Environment}-users
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: user_id
@@ -272,7 +281,7 @@ Resources:
   RefreshTokensTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}_refresh_tokens
+      TableName: !Sub ${AppName}-${Environment}-refresh_tokens
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: token
@@ -296,7 +305,7 @@ Resources:
   VerificationCodesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}_verification_codes
+      TableName: !Sub ${AppName}-${Environment}-verification_codes
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: user_id
@@ -312,7 +321,7 @@ Resources:
   LoginAttemptsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}_login_attempts
+      TableName: !Sub ${AppName}-${Environment}-login_attempts
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: ip_address
@@ -328,7 +337,7 @@ Resources:
   RateLimitsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${Environment}_rate_limits
+      TableName: !Sub ${AppName}-${Environment}-rate_limits
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: limit_key

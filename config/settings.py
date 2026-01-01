@@ -7,14 +7,21 @@ from typing import Optional
 class Config:
     # AWS Configuration
     AWS_REGION: str = os.getenv('AWS_REGION', 'eu-north-1')
-    TABLE_PREFIX: str = os.getenv('DYNAMODB_TABLE_PREFIX', 'dev')
-    
-    # Table Names
-    USERS_TABLE: str = f"{TABLE_PREFIX}_users"
-    REFRESH_TOKENS_TABLE: str = f"{TABLE_PREFIX}_refresh_tokens"
-    VERIFICATION_CODES_TABLE: str = f"{TABLE_PREFIX}_verification_codes"
-    LOGIN_ATTEMPTS_TABLE: str = f"{TABLE_PREFIX}_login_attempts"
-    RATE_LIMITS_TABLE: str = f"{TABLE_PREFIX}_rate_limits"
+
+    # App Identification
+    APP_NAME: str = os.getenv('APP_NAME', 'basic-auth')
+    ENVIRONMENT: str = os.getenv('ENVIRONMENT', 'dev')
+
+    # Legacy support (deprecated)
+    TABLE_PREFIX: str = os.getenv('DYNAMODB_TABLE_PREFIX', f"{APP_NAME}-{ENVIRONMENT}")
+
+    # Table Names - Format: {app-name}-{environment}-{table}
+    # This allows multiple deployments in the same AWS account without conflicts
+    USERS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-users"
+    REFRESH_TOKENS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-refresh_tokens"
+    VERIFICATION_CODES_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-verification_codes"
+    LOGIN_ATTEMPTS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-login_attempts"
+    RATE_LIMITS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-rate_limits"
     
     # JWT Configuration
     JWT_SECRET: str = os.getenv('JWT_SECRET', 'change-this-secret-key')
