@@ -57,7 +57,8 @@ def register(event, context):
             'first_name': first_name,
             'last_name': last_name,
             'phone': phone,
-            'role': 'user',  # Default role
+            'role': 'customer',  # Default role for public registration (external user)
+            'tenant_id': None,  # Customers are global users, not scoped to a tenant
             'is_verified': False,
             'is_locked': False,
             'failed_login_attempts': 0,
@@ -86,7 +87,7 @@ def register(event, context):
             'first_name': first_name,
             'last_name': last_name,
             'phone': phone,
-            'role': 'user',
+            'role': 'customer',
             'is_verified': False,
             'created_at': user_data['created_at']
         }
@@ -150,6 +151,7 @@ def register_master(event, context):
             'last_name': last_name,
             'phone': phone,
             'role': 'master',  # Master role
+            'tenant_id': None,  # Master is a system role, not scoped to any tenant
             'is_verified': True,  # Auto-verify master users
             'is_locked': False,
             'failed_login_attempts': 0,

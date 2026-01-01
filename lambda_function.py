@@ -21,7 +21,8 @@ from handlers import (
     list_users,
     get_user,
     update_user_role,
-    delete_user
+    delete_user,
+    create_internal_user
 )
 from utils import error_response
 
@@ -43,6 +44,7 @@ ROUTES = {
     'GET /auth/me': get_me,
     'PUT /auth/me': update_me,
     'GET /users': list_users,
+    'POST /users': create_internal_user,
     'GET /users/{id}': get_user,
     'PUT /users/{id}/role': update_user_role,
     'DELETE /users/{id}': delete_user

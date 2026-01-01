@@ -59,7 +59,8 @@ def require_auth(required_role: Optional[str] = None):
             event['user'] = {
                 'user_id': payload['user_id'],
                 'email': payload['email'],
-                'role': payload['role']
+                'role': payload['role'],
+                'tenant_id': user.get('tenant_id')  # Include tenant_id for multi-tenant access control
             }
             
             return func(event, context)

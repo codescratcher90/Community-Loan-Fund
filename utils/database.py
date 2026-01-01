@@ -66,9 +66,40 @@ class UserDB:
         return True
     
     @staticmethod
-    def list_users(limit: int = 100) -> List[Dict[str, Any]]:
-        """List all users"""
-        response = users_table.scan(Limit=limit)
+    def list_users(limit: int = 100, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List users
+        If tenant_id is provided, only return users from that tenant
+        If tenant_id is None, return all users (for master)
+        """
+        if tenant_id:
+            # Filter by tenant_id
+            response = users_table.scan(
+                FilterExpression=Attr('tenant_id').eq(tenant_id),
+                Limit=limit
+            )
+        else:
+            # Return all users (master only)
+            response = users_table.scan(Limit=limit)
+
+        return response.get('Items', [])
+
+    @staticmethod
+    def list_users_by_tenant(tenant_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """List all users in a specific tenant"""
+        response = users_table.scan(
+            FilterExpression=Attr('tenant_id').eq(tenant_id),
+            Limit=limit
+        )
+        return response.get('Items', [])
+
+    @staticmethod
+    def list_customers(limit: int = 100) -> List[Dict[str, Any]]:
+        """List all customer users (external users with no tenant)"""
+        response = users_table.scan(
+            FilterExpression=Attr('role').eq('customer'),
+            Limit=limit
+        )
         return response.get('Items', [])
     
     @staticmethod

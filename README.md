@@ -6,7 +6,8 @@ A production-ready, serverless authentication API built with AWS Lambda, API Gat
 
 - **JWT Authentication** - Secure token-based authentication with access and refresh tokens
 - **User Management** - Complete CRUD operations for user accounts
-- **Role-Based Access Control** - Support for user, admin, and master roles
+- **Multi-Tenant Architecture** - Full tenant isolation for organizations with global customer support
+- **Role-Based Access Control** - 8-tier role hierarchy (master, owner, admin, manager, supervisor, coordinator, staff, customer)
 - **Email & SMS Verification** - Two-factor verification for new accounts
 - **Rate Limiting** - Protection against brute force and abuse
 - **Account Security** - Failed login tracking, account locking, and password hashing with bcrypt
@@ -33,6 +34,76 @@ A production-ready, serverless authentication API built with AWS Lambda, API Gat
                                           │   - Limits     │
                                           └────────────────┘
 ```
+
+## 🎭 Role Hierarchy & Multi-Tenant Architecture
+
+### Role Structure
+
+The system implements an 8-tier role hierarchy with multi-tenant support:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  SYSTEM LEVEL                                           │
+│  ┌────────┐                                             │
+│  │ master │  System developer - Full access to all     │
+│  └────────┘  tenants and users                          │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  TENANT LEVEL (Scoped to Organization)                  │
+│  ┌───────┐                                              │
+│  │ owner │  Organization owner                          │
+│  └───┬───┘                                              │
+│      │                                                   │
+│  ┌───▼───┐                                              │
+│  │ admin │  Organization administrator                  │
+│  └───┬───┘                                              │
+│      │                                                   │
+│  ┌───▼────────┐                                         │
+│  │  manager   │  Department/Team manager                │
+│  └───┬────────┘                                         │
+│      │                                                   │
+│  ┌───▼──────────┐                                       │
+│  │  supervisor  │  Team lead/Supervisor                 │
+│  └───┬──────────┘                                       │
+│      │                                                   │
+│  ┌───▼────────────┐                                     │
+│  │  coordinator   │  Project coordinator/Specialist     │
+│  └───┬────────────┘                                     │
+│      │                                                   │
+│  ┌───▼─────┐                                            │
+│  │  staff  │  Team member                               │
+│  └─────────┘                                            │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  GLOBAL LEVEL (Not scoped to tenant)                    │
+│  ┌──────────┐                                           │
+│  │ customer │  External user - Can interact with        │
+│  └──────────┘  multiple tenants                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Multi-Tenant Model
+
+**Internal Users (Tenant-Scoped):**
+- Roles: `owner`, `admin`, `manager`, `supervisor`, `coordinator`, `staff`
+- Each user has a `tenant_id` linking them to their organization
+- Can only access and manage resources within their tenant
+- Example: Hotel A's staff can only see Hotel A's bookings
+
+**External Users (Global):**
+- Role: `customer`
+- No `tenant_id` - exists globally across all tenants
+- Can interact with multiple organizations
+- Can view their own data across all tenants
+- Example: A customer can book rooms at Hotel A, Hotel B, and Hotel C and see all bookings in one view
+
+**System Users:**
+- Role: `master`
+- No `tenant_id` - full system access
+- Can view and manage all tenants and users
+- Can create new organizations (owners with new tenant_id)
 
 ## 📋 Prerequisites
 
@@ -202,12 +273,13 @@ curl -X POST $API_URL/auth/login \
 
 ### User Management Endpoints
 
-| Method | Endpoint | Description | Auth Required | Role Required |
-|--------|----------|-------------|---------------|---------------|
-| GET | `/users` | List all users | Yes | Admin/Master |
-| GET | `/users/{id}` | Get user by ID | Yes | Admin/Master |
-| PUT | `/users/{id}/role` | Update user role | Yes | Master |
-| DELETE | `/users/{id}` | Delete user | Yes | Master |
+| Method | Endpoint | Description | Auth Required | Role Required | Tenant Isolation |
+|--------|----------|-------------|---------------|---------------|------------------|
+| GET | `/users` | List all users | Yes | Admin+ | Master: all users<br>Admin+: tenant users only |
+| POST | `/users` | Create internal user | Yes | Admin+ | Master: any tenant<br>Admin+: own tenant only |
+| GET | `/users/{id}` | Get user by ID | Yes | Admin+ | Master: any user<br>Admin+: tenant users only |
+| PUT | `/users/{id}/role` | Update user role | Yes | Admin+ | Master: any user<br>Admin+: tenant users only |
+| DELETE | `/users/{id}` | Delete user | Yes | Master | Master only - any user |
 
 ### Example Requests
 
@@ -572,10 +644,88 @@ curl -X GET "https://your-api-url.com/users?limit=100" \
 
 **Query Parameters:**
 - `limit` (optional): Maximum number of users to return (default: 100)
+
+**Note:**
+- Master sees all users across all tenants
+- Admin/Owner/etc. see only users in their tenant
 </details>
 
 <details>
-<summary><b>10. Get User by ID - GET /users/{id}</b></summary>
+<summary><b>10. Create Internal User - POST /users</b></summary>
+
+Create a new internal user (owner, admin, staff, etc.). Requires admin or master role.
+
+**Master Creating Owner (New Tenant):**
+```bash
+curl -X POST https://your-api-url.com/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "email": "hotel-owner@example.com",
+    "password": "SecurePass123",
+    "first_name": "Hotel",
+    "last_name": "Owner",
+    "phone": "+1234567890",
+    "role": "owner",
+    "tenant_id": "hotel-abc-123"
+  }'
+```
+
+**Admin Creating Staff in Their Tenant:**
+```bash
+curl -X POST https://your-api-url.com/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "email": "staff@example.com",
+    "password": "SecurePass123",
+    "first_name": "Staff",
+    "last_name": "Member",
+    "phone": "+1987654321",
+    "role": "staff"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "status_code": 201,
+  "message": "Staff user created successfully",
+  "data": {
+    "user_id": "770f9522-g40d-63f6-c938-668877662222",
+    "email": "staff@example.com",
+    "first_name": "Staff",
+    "last_name": "Member",
+    "phone": "+1987654321",
+    "role": "staff",
+    "tenant_id": "hotel-abc-123",
+    "is_verified": true,
+    "created_at": "2025-12-26T12:00:00.000000"
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+**Valid Roles for Internal Users:**
+- `owner` - Organization owner (master only)
+- `admin` - Administrator
+- `manager` - Manager
+- `supervisor` - Supervisor
+- `coordinator` - Coordinator
+- `staff` - Staff member
+
+**Notes:**
+- Internal users are auto-verified (no email/SMS verification needed)
+- Master can create owners with custom `tenant_id` or internal users for any tenant
+- Admin+ can only create users within their own tenant
+- Admin+ cannot create owners (master only)
+- The new user inherits the creator's `tenant_id` (unless master specifies otherwise)
+</details>
+
+<details>
+<summary><b>11. Get User by ID - GET /users/{id}</b></summary>
 
 Get detailed information about a specific user. Requires admin or master role.
 
@@ -627,9 +777,9 @@ curl -X GET https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000 
 </details>
 
 <details>
-<summary><b>11. Update User Role - PUT /users/{id}/role</b></summary>
+<summary><b>12. Update User Role - PUT /users/{id}/role</b></summary>
 
-Update a user's role. Requires admin or master role. Role hierarchy: master > admin > user.
+Update a user's role. Requires admin or master role.
 
 **Request:**
 ```bash
@@ -679,7 +829,7 @@ curl -X PUT https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000/
 </details>
 
 <details>
-<summary><b>12. Delete User - DELETE /users/{id}</b></summary>
+<summary><b>13. Delete User - DELETE /users/{id}</b></summary>
 
 Delete a user account. Requires master role. Cannot delete your own account.
 

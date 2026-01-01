@@ -4,7 +4,7 @@ from .login import login
 from .refresh_token import refresh
 from .logout import logout
 from .profile import get_me, update_me
-from .users import list_users, get_user, update_user_role, delete_user
+from .users import list_users, get_user, update_user_role, delete_user, create_internal_user
 
 __all__ = [
     'register',
@@ -18,5 +18,6 @@ __all__ = [
     'list_users',
     'get_user',
     'update_user_role',
-    'delete_user'
+    'delete_user',
+    'create_internal_user'
 ]

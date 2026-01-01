@@ -38,6 +38,7 @@ def get_me(event, context):
             'last_name': user['last_name'],
             'phone': user.get('phone', ''),
             'role': user['role'],
+            'tenant_id': user.get('tenant_id'),
             'is_verified': user.get('is_verified', False),
             'is_locked': user.get('is_locked', False),
             'created_at': user.get('created_at'),
@@ -130,6 +131,7 @@ def update_me(event, context):
             'last_name': updated_user['last_name'],
             'phone': updated_user.get('phone', ''),
             'role': updated_user['role'],
+            'tenant_id': updated_user.get('tenant_id'),
             'updated_at': updated_user['updated_at']
         }
         
