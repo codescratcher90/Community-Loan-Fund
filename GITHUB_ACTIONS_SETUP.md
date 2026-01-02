@@ -93,13 +93,32 @@ MASTER_SECRET_KEY: Z9Y8X7W6V5U4T3S2R1Q0P9O8N7M6L5K4
 
 ---
 
-### Step 3: Add Secrets to GitHub
+### Step 3: Add Secrets and Variables to GitHub
 
 1. Go to your GitHub repository
 2. Click **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
 
-#### Add These Secrets (for Dev/Staging):
+#### 3a. Add Variables (Non-Sensitive Configuration)
+
+Click the **Variables** tab:
+
+| Variable Name | Value | Description |
+|---------------|-------|-------------|
+| `APP_NAME` | `basic-auth` or your custom name | Application name for resource naming |
+
+**Example custom names:**
+- `hotel-manager` - For hotel management system
+- `restaurant-pos` - For restaurant POS
+- `gymflow` - For gym management
+
+> 💡 **White-Label Deployments:** Change `APP_NAME` to deploy multiple instances!
+> See **[GITHUB_ACTIONS_APP_NAME.md](GITHUB_ACTIONS_APP_NAME.md)** for details.
+
+#### 3b. Add Secrets (Sensitive Data)
+
+Click the **Secrets** tab and add:
+
+##### For Dev/Staging:
 
 | Secret Name | Value | Example |
 |-------------|-------|---------|
@@ -192,8 +211,7 @@ Or manually trigger:
 ### Dev Workflow (`deploy-dev.yml`)
 
 **Triggers:**
-- Push to `main` or `develop` branches
-- Manual trigger
+- Manual trigger from Actions tab
 
 **Steps:**
 1. Checkout code
@@ -204,20 +222,22 @@ Or manually trigger:
 6. Deploy to AWS dev environment
 7. Output API URL
 
-**Stack created:** `basic-auth-dev`
+**Stack created:** `{APP_NAME}-dev` (default: `basic-auth-dev`)
+
+**Example with custom APP_NAME:**
+- `APP_NAME=hotel-manager` → Stack: `hotel-manager-dev`
+- `APP_NAME=restaurant-pos` → Stack: `restaurant-pos-dev`
 
 ### Staging Workflow (`deploy-staging.yml`)
 
 **Triggers:**
-- Push to `staging` branch
-- Manual trigger
+- Manual trigger from Actions tab
 
-**Stack created:** `basic-auth-staging`
+**Stack created:** `{APP_NAME}-staging` (default: `basic-auth-staging`)
 
 ### Production Workflow (`deploy-prod.yml`)
 
 **Triggers:**
-- Push version tags (`v1.0.0`, `v2.1.3`, etc.)
 - Manual trigger (requires confirmation)
 
 **Extra protections:**
@@ -226,7 +246,25 @@ Or manually trigger:
 - Uses separate secrets (production secrets)
 - Optional: Requires reviewer approval (if environment configured)
 
-**Stack created:** `basic-auth-prod`
+**Stack created:** `{APP_NAME}-prod` (default: `basic-auth-prod`)
+
+---
+
+### 🏷️ Resource Naming
+
+All AWS resources are named using: **`{APP_NAME}-{ENVIRONMENT}-{resource}`**
+
+**Default** (`APP_NAME=basic-auth`):
+- Stack: `basic-auth-dev`
+- Tables: `basic-auth-dev-users`, `basic-auth-dev-tokens`
+- Lambda: `basic-auth-dev-api`
+- API Gateway: `basic-auth-dev-api`
+
+**Custom** (`APP_NAME=hotel-manager`):
+- Stack: `hotel-manager-dev`
+- Tables: `hotel-manager-dev-users`, `hotel-manager-dev-tokens`
+- Lambda: `hotel-manager-dev-api`
+- API Gateway: `hotel-manager-dev-api`
 
 ---
 
@@ -253,13 +291,20 @@ GitHub Actions will show:
 
 **Method 2:** AWS Console
 ```
-CloudFormation → Stacks → basic-auth-dev → Outputs → ApiUrl
+CloudFormation → Stacks → {APP_NAME}-dev → Outputs → ApiUrl
 ```
 
 **Method 3:** AWS CLI
 ```bash
+# Replace {APP_NAME} with your actual app name
 aws cloudformation describe-stacks \
-  --stack-name basic-auth-dev \
+  --stack-name {APP_NAME}-dev \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+  --output text
+
+# Example for hotel-manager:
+aws cloudformation describe-stacks \
+  --stack-name hotel-manager-dev \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
   --output text
 ```
@@ -284,6 +329,55 @@ aws cloudformation describe-stacks \
 - Use same secrets across environments
 - Disable security checks
 - Deploy to production without review
+
+---
+
+## 🎨 White-Label / Multi-Client Deployments
+
+Deploy the **same codebase** for **multiple clients** using custom `APP_NAME`:
+
+### Scenario: Multiple Hotel Clients
+
+**Client A - Luxury Hotels:**
+1. Set `APP_NAME=luxury-hotels`
+2. Deploy → Creates `luxury-hotels-prod`
+3. API URL: `https://xxx.execute-api.region.amazonaws.com/prod/`
+
+**Client B - Budget Hotels:**
+1. Set `APP_NAME=budget-hotels`
+2. Deploy → Creates `budget-hotels-prod`
+3. API URL: `https://yyy.execute-api.region.amazonaws.com/prod/`
+
+**Both deployments:**
+- ✅ Run in the same AWS account
+- ✅ Use separate databases
+- ✅ Have independent APIs
+- ✅ Zero conflicts
+
+### Implementation Options:
+
+**Option 1: Branches** (Recommended)
+```bash
+# Create branch for each client
+git checkout -b client/luxury-hotels
+# Set APP_NAME=luxury-hotels in GitHub Variables for this branch
+# Deploy from this branch
+
+git checkout -b client/budget-hotels
+# Set APP_NAME=budget-hotels in GitHub Variables
+# Deploy from this branch
+```
+
+**Option 2: Separate Repositories**
+- Fork the repo for each client
+- Set different `APP_NAME` in each repo's variables
+- Deploy independently
+
+**Option 3: Manual Workflow Input** (Advanced)
+- Modify workflows to accept `APP_NAME` as input
+- Select name when running workflow
+
+📖 **Full Guide:** [GITHUB_ACTIONS_APP_NAME.md](GITHUB_ACTIONS_APP_NAME.md)
 
 ---
 
@@ -365,7 +459,9 @@ git push origin v1.0.0
 
 - [ ] Create IAM user in AWS with required permissions
 - [ ] Generate 3 secure secrets (JWT, Refresh, Master)
-- [ ] Add 6 secrets to GitHub:
+- [ ] Add **Variable** to GitHub (Settings → Actions → Variables):
+  - [ ] `APP_NAME` (e.g., `basic-auth`, `hotel-manager`, or custom name)
+- [ ] Add **Secrets** to GitHub (Settings → Actions → Secrets):
   - [ ] `AWS_ACCESS_KEY_ID`
   - [ ] `AWS_SECRET_ACCESS_KEY`
   - [ ] `AWS_REGION`
@@ -373,7 +469,7 @@ git push origin v1.0.0
   - [ ] `REFRESH_TOKEN_SECRET`
   - [ ] `MASTER_SECRET_KEY`
 - [ ] (Optional) Create `production` environment in GitHub
-- [ ] Push to `main` branch to test
+- [ ] Go to Actions tab → Deploy to Dev → Run workflow
 - [ ] Check Actions tab for deployment status
 - [ ] Get API URL from workflow summary
 - [ ] Test API endpoints
@@ -385,14 +481,20 @@ git push origin v1.0.0
 **Setup once:**
 1. Create IAM user in AWS
 2. Generate secrets
-3. Add secrets to GitHub
+3. Add `APP_NAME` variable to GitHub
+4. Add secrets to GitHub
 
-**Use forever:**
-- Push to `main` → Auto-deploy to dev
-- Push to `staging` → Auto-deploy to staging
-- Tag `v1.0.0` → Auto-deploy to production
+**Deploy easily:**
+- Go to Actions → Deploy to Dev → Run workflow
+- Go to Actions → Deploy to Staging → Run workflow
+- Go to Actions → Deploy to Production → Run workflow (with confirmation)
 
-**Zero manual deployment needed!** 🎉
+**White-label support:**
+- Change `APP_NAME` variable for each client
+- Deploy multiple instances in same AWS account
+- Zero conflicts, isolated databases
+
+**Zero manual AWS configuration needed!** 🎉
 
 ---
 

@@ -39,6 +39,21 @@ A production-ready, serverless authentication API built with AWS Lambda, API Gat
 
 ### Role Structure
 
+The system implements an **8-tier role hierarchy** with **multi-tenant support**. Roles are generic and map to different job titles based on your use case:
+
+| Role | Level | Hotel System | Restaurant | Gym/Fitness | SaaS Platform |
+|------|-------|--------------|------------|-------------|---------------|
+| **master** | 8 | System Owner | System Owner | System Owner | Platform Owner |
+| **owner** | 7 | Hotel Owner | Restaurant Owner | Gym Owner | Company Admin |
+| **admin** | 6 | General Manager | Regional Manager | Gym Manager | Team Lead |
+| **manager** | 5 | Dept. Manager | Location Manager | Head Trainer | Project Manager |
+| **supervisor** | 4 | Shift Supervisor | Shift Lead | Senior Trainer | Senior Developer |
+| **coordinator** | 3 | Guest Relations | Event Coordinator | Class Coordinator | Coordinator |
+| **staff** | 2 | Receptionist | Server/Chef | Trainer | Team Member |
+| **customer** | 1 | Guest | Diner | Member | End User |
+
+### Technical Hierarchy
+
 The system implements an 8-tier role hierarchy with multi-tenant support:
 
 ```
@@ -104,6 +119,18 @@ The system implements an 8-tier role hierarchy with multi-tenant support:
 - No `tenant_id` - full system access
 - Can view and manage all tenants and users
 - Can create new organizations (owners with new tenant_id)
+
+### Real-World Examples
+
+Want to see how this works in practice? Check out complete deployment examples for:
+- 🏨 **Hotel Management System** - Multiple hotels with isolated staff and global guests
+- 🍽️ **Restaurant POS** - Multi-location restaurant chain
+- 💪 **Gym/Fitness Platform** - Trainers, members, and class management
+- 💼 **SaaS Multi-Tenant** - B2B platform with company isolation
+- 📚 **E-Learning Platform** - Instructors, students, and courses
+- 🏥 **Healthcare Clinic** - Doctors, nurses, and patients
+
+👉 **[See Complete Deployment Examples →](DEPLOYMENT_EXAMPLES.md)**
 
 ## 📋 Prerequisites
 
@@ -363,7 +390,7 @@ curl -X POST https://your-api-url.com/auth/register \
     "first_name": "John",
     "last_name": "Doe",
     "phone": "+1234567890",
-    "role": "user",
+    "role": "customer",
     "is_verified": false,
     "created_at": "2025-12-26T10:30:00.000000"
   },
@@ -477,10 +504,10 @@ curl -X POST https://your-api-url.com/auth/login \
       "first_name": "John",
       "last_name": "Doe",
       "phone": "+1234567890",
-      "role": "user"
+      "role": "customer"
     },
     "tokens": {
-      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwicm9sZSI6InVzZXIiLCJleHAiOjE3MDUzOTY4MDB9.example",
+      "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwicm9sZSI6ImN1c3RvbWVyIiwiZXhwIjoxNzA1Mzk2ODAwfQ.example",
       "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiZXhwIjoxNzA2MDAxNjAwfQ.example",
       "type": "Bearer",
       "expires_in": 1800
@@ -576,7 +603,7 @@ curl -X GET https://your-api-url.com/auth/me \
     "first_name": "John",
     "last_name": "Doe",
     "phone": "+1234567890",
-    "role": "user",
+    "role": "customer",
     "is_verified": true,
     "is_locked": false,
     "created_at": "2025-12-26T10:30:00.000000",
@@ -628,7 +655,7 @@ curl -X PUT https://your-api-url.com/auth/me \
     "first_name": "Johnny",
     "last_name": "Doe",
     "phone": "+1987654321",
-    "role": "user",
+    "role": "customer",
     "updated_at": "2025-12-26T11:00:00.000000"
   },
   "error": null,
@@ -662,11 +689,11 @@ curl -X GET "https://your-api-url.com/users?limit=100" \
     "users": [
       {
         "user_id": "550e8400-e29b-41d4-a716-446655440000",
-        "email": "user@example.com",
+        "email": "customer@example.com",
         "first_name": "John",
         "last_name": "Doe",
         "phone": "+1234567890",
-        "role": "user",
+        "role": "customer",
         "is_verified": true,
         "is_locked": false,
         "created_at": "2025-12-26T10:30:00.000000"
@@ -678,12 +705,25 @@ curl -X GET "https://your-api-url.com/users?limit=100" \
         "last_name": "User",
         "phone": "",
         "role": "master",
+        "tenant_id": null,
         "is_verified": true,
         "is_locked": false,
         "created_at": "2025-12-26T10:35:00.000000"
+      },
+      {
+        "user_id": "770f9522-g40d-63f6-c938-668877662222",
+        "email": "staff@hotel.com",
+        "first_name": "Staff",
+        "last_name": "Member",
+        "phone": "+1987654321",
+        "role": "staff",
+        "tenant_id": "hotel-abc-123",
+        "is_verified": true,
+        "is_locked": false,
+        "created_at": "2025-12-26T11:00:00.000000"
       }
     ],
-    "count": 2
+    "count": 3
   },
   "error": null,
   "meta": {}
@@ -694,8 +734,9 @@ curl -X GET "https://your-api-url.com/users?limit=100" \
 - `limit` (optional): Maximum number of users to return (default: 100)
 
 **Note:**
-- Master sees all users across all tenants
-- Admin/Owner/etc. see only users in their tenant
+- **Master**: Sees all users across all tenants
+- **Internal roles** (owner, admin, manager, etc.): See only users in their tenant
+- **Customers**: Not applicable (customers can only see themselves via `/auth/me`)
 </details>
 
 <details>
@@ -791,11 +832,12 @@ curl -X GET https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000 
   "message": "Success",
   "data": {
     "user_id": "550e8400-e29b-41d4-a716-446655440000",
-    "email": "user@example.com",
+    "email": "customer@example.com",
     "first_name": "John",
     "last_name": "Doe",
     "phone": "+1234567890",
-    "role": "user",
+    "role": "customer",
+    "tenant_id": null,
     "is_verified": true,
     "is_locked": false,
     "email_verified": true,
@@ -857,9 +899,21 @@ curl -X PUT https://your-api-url.com/users/550e8400-e29b-41d4-a716-446655440000/
 ```
 
 **Valid Roles:**
-- `user` - Regular user (default)
-- `admin` - Administrator (can manage users, cannot create masters)
-- `master` - Master administrator (full access)
+All 8 roles in the hierarchy:
+- `master` - System owner (full access)
+- `owner` - Organization owner
+- `admin` - Administrator
+- `manager` - Manager
+- `supervisor` - Supervisor
+- `coordinator` - Coordinator
+- `staff` - Staff member
+- `customer` - External user
+
+**Permission Notes:**
+- **Master**: Can promote anyone to any role except another master
+- **Owner/Admin+**: Can promote users to roles below their own level
+- Cannot promote users above your own role level
+- Cannot demote users who are at or above your role level
 
 **Error Response (403 Forbidden):**
 ```json
