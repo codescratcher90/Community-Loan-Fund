@@ -14,7 +14,8 @@ from utils import (
     error_response,
     not_found_response,
     forbidden_response,
-    validation_error_response
+    validation_error_response,
+    get_setting
 )
 from middleware import require_auth, get_current_user
 
@@ -259,6 +260,11 @@ def create_internal_user(event, context):
     - Owners/Admins: can create internal users within their own tenant only
     """
     try:
+        # Check if adding new users is allowed
+        allow_adding_new_users = get_setting('allow_adding_new_users', True)
+        if not allow_adding_new_users:
+            return error_response("Adding new users is currently disabled", status_code=403)
+
         current_user = get_current_user(event)
         body = json.loads(event.get('body', '{}'))
 
