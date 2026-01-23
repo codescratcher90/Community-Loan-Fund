@@ -137,11 +137,21 @@ def register_master(event, context):
     try:
         body = json.loads(event.get('body', '{}'))
         print(f"[LOG] Master registration: {body}")
-        # Verify master secret key
-        secret_key = body.get('secret_key')
-        if not secret_key or secret_key != config.MASTER_SECRET_KEY:
-            print("MMKK:", config.MASTER_SECRET_KEY)
-            print("SK:", secret_key)    
+
+        # Check if MASTER_SECRET_KEY is configured
+        if not config.MASTER_SECRET_KEY:
+            print("[ERROR] MASTER_SECRET_KEY environment variable is not set")
+            return error_response("Master registration is not configured", status_code=500)
+
+        # Verify master secret key - strip whitespace from both sides
+        secret_key = body.get('secret_key', '').strip()
+        expected_key = config.MASTER_SECRET_KEY.strip()
+
+        if not secret_key or secret_key != expected_key:
+            print(f"[ERROR] Secret key mismatch")
+            print(f"  Expected length: {len(expected_key)}")
+            print(f"  Received length: {len(secret_key)}")
+            print(f"  Match: {secret_key == expected_key}")
             return error_response("Invalid master secret key", status_code=403)
             
         # Validate input
