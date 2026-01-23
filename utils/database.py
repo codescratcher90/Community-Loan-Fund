@@ -134,6 +134,53 @@ class UserDB:
             }
         )
 
+    @staticmethod
+    def unlock_account(user_id: str):
+        """Unlock user account and reset failed attempts"""
+        users_table.update_item(
+            Key={'user_id': user_id},
+            UpdateExpression='SET is_locked = :unlocked, failed_login_attempts = :zero REMOVE locked_at',
+            ExpressionAttributeValues={
+                ':unlocked': False,
+                ':zero': 0
+            }
+        )
+
+    @staticmethod
+    def should_auto_unlock(user: Dict[str, Any], lockout_duration_minutes: int) -> bool:
+        """
+        Check if a locked account should be auto-unlocked based on lockout duration
+
+        Args:
+            user: User object with is_locked and locked_at fields
+            lockout_duration_minutes: Lockout duration in minutes (0 = permanent lock)
+
+        Returns:
+            True if account should be auto-unlocked, False otherwise
+        """
+        if not user.get('is_locked', False):
+            return False
+
+        # If lockout duration is 0, it's a permanent lock
+        if lockout_duration_minutes == 0:
+            return False
+
+        locked_at_str = user.get('locked_at')
+        if not locked_at_str:
+            # Account is locked but no locked_at timestamp (legacy data)
+            # Unlock it to fix the data
+            return True
+
+        try:
+            locked_at = datetime.fromisoformat(locked_at_str)
+            unlock_at = locked_at + timedelta(minutes=lockout_duration_minutes)
+
+            # Check if current time is past unlock time
+            return datetime.utcnow() >= unlock_at
+        except (ValueError, TypeError):
+            # Invalid timestamp, unlock the account
+            return True
+
 
 class RefreshTokenDB:
     """Refresh token table operations"""

@@ -1,10 +1,11 @@
 from .database import (
-    UserDB, 
-    RefreshTokenDB, 
-    VerificationCodeDB, 
+    UserDB,
+    RefreshTokenDB,
+    VerificationCodeDB,
     LoginAttemptDB,
     RateLimitDB
 )
+from .app_settings import AppSettingsDB, get_setting
 from .jwt_utils import (
     generate_access_token,
     generate_refresh_token,
@@ -63,6 +64,8 @@ __all__ = [
     'VerificationCodeDB',
     'LoginAttemptDB',
     'RateLimitDB',
+    'AppSettingsDB',
+    'get_setting',
     # JWT
     'generate_access_token',
     'generate_refresh_token',

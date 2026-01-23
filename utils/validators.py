@@ -4,6 +4,7 @@ Input Validation Utilities
 import re
 from typing import Dict, Optional
 from config import config, VALID_ROLES
+from .app_settings import get_setting
 
 def validate_email(email: str) -> tuple[bool, Optional[str]]:
     """
@@ -29,10 +30,12 @@ def validate_password(password: str) -> tuple[bool, Optional[str]]:
     """
     if not password:
         return False, "Password is required"
-    
-    if len(password) < config.MIN_PASSWORD_LENGTH:
-        return False, f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters"
-    
+
+    min_password_length = get_setting('min_password_length', config.MIN_PASSWORD_LENGTH)
+
+    if len(password) < min_password_length:
+        return False, f"Password must be at least {min_password_length} characters"
+
     return True, None
 
 

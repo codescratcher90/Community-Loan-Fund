@@ -14,7 +14,8 @@ from utils import (
     validate_login_data,
     login_success_response,
     error_response,
-    validation_error_response
+    validation_error_response,
+    get_setting
 )
 from decimal import Decimal
 
@@ -42,37 +43,63 @@ def login(event, context):
         
         # Get user
         user = UserDB.get_user_by_email(email)
-        
+
         if not user:
             # Record failed attempt
             LoginAttemptDB.record_attempt(ip_address, email, success=False)
             return error_response("Invalid email or password", status_code=401)
-        
-        # Check if account is locked
+
+        # Get settings
+        max_failed_login_attempts = get_setting('max_failed_login_attempts', 5)
+        account_lockout_duration_minutes = get_setting('account_lockout_duration_minutes', 30)
+        email_verification_required = get_setting('email_verification_required', True)
+
+        # Check if account should be auto-unlocked
         if user.get('is_locked', False):
-            return error_response("Account is locked due to too many failed login attempts", status_code=403)
+            if UserDB.should_auto_unlock(user, account_lockout_duration_minutes):
+                # Auto-unlock the account
+                UserDB.unlock_account(user['user_id'])
+                print(f"[INFO] Auto-unlocked account for user {user['user_id']}")
+                user['is_locked'] = False
+                user['failed_login_attempts'] = 0
+            else:
+                # Account is still locked
+                if account_lockout_duration_minutes == 0:
+                    return error_response("Account is permanently locked. Contact support.", status_code=403)
+                else:
+                    return error_response(
+                        f"Account is locked due to too many failed login attempts. Try again later.",
+                        status_code=403
+                    )
         
-        # Check if account is verified
-        if not user.get('is_verified', False):
+        # Check if account is verified (only if email verification is required)
+        if email_verification_required and not user.get('is_verified', False):
             return error_response("Account is not verified. Please verify your email and phone.", status_code=403)
         
         # Verify password
         if not verify_password(password, user['password']):
             # Increment failed attempts
             failed_attempts = UserDB.increment_failed_attempts(user['user_id'])
-            
+
             # Lock account if too many failed attempts
-            if failed_attempts >= config.MAX_FAILED_LOGIN_ATTEMPTS:
+            if failed_attempts >= max_failed_login_attempts:
                 UserDB.lock_account(user['user_id'])
-                return error_response(
-                    f"Account locked due to {config.MAX_FAILED_LOGIN_ATTEMPTS} failed login attempts",
-                    status_code=403
-                )
-            
+
+                if account_lockout_duration_minutes == 0:
+                    return error_response(
+                        f"Account permanently locked due to {max_failed_login_attempts} failed login attempts. Contact support.",
+                        status_code=403
+                    )
+                else:
+                    return error_response(
+                        f"Account locked for {account_lockout_duration_minutes} minutes due to {max_failed_login_attempts} failed login attempts",
+                        status_code=403
+                    )
+
             # Record failed attempt
             LoginAttemptDB.record_attempt(ip_address, email, success=False)
-            
-            remaining_attempts = config.MAX_FAILED_LOGIN_ATTEMPTS - failed_attempts
+
+            remaining_attempts = max_failed_login_attempts - failed_attempts
             return error_response(
                 f"Invalid email or password. {remaining_attempts} attempts remaining.",
                 status_code=401

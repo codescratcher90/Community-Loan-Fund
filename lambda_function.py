@@ -24,6 +24,7 @@ from handlers import (
     delete_user,
     create_internal_user
 )
+from handlers.settings import get_settings, update_settings
 from utils import error_response
 
 # Load environment variables from .env if running locally
@@ -32,6 +33,15 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+# Initialize app settings on cold start
+try:
+    from utils import AppSettingsDB
+    # Try to initialize settings (will only run once)
+    AppSettingsDB.initialize_settings()
+except Exception as e:
+    print(f"[WARNING] Could not initialize app settings: {str(e)}")
+    # Continue execution - settings will use defaults if initialization fails
 
 # Route mapping
 ROUTES = {
@@ -47,7 +57,9 @@ ROUTES = {
     'POST /users': create_internal_user,
     'GET /users/{id}': get_user,
     'PUT /users/{id}/role': update_user_role,
-    'DELETE /users/{id}': delete_user
+    'DELETE /users/{id}': delete_user,
+    'GET /settings': get_settings,
+    'PUT /settings': update_settings
 }
 
 

@@ -22,6 +22,7 @@ class Config:
     VERIFICATION_CODES_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-verification_codes"
     LOGIN_ATTEMPTS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-login_attempts"
     RATE_LIMITS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-rate_limits"
+    APP_SETTINGS_TABLE: str = f"{APP_NAME}-{ENVIRONMENT}-app_settings"
     
     # JWT Configuration
     JWT_SECRET: str = os.getenv('JWT_SECRET', 'change-this-secret-key')

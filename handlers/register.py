@@ -16,7 +16,8 @@ from utils import (
     validation_error_response,
     create_verification_record,
     send_email_verification,
-    send_sms_verification
+    send_sms_verification,
+    get_setting
 )
 from middleware import register_rate_limit
 
@@ -27,14 +28,19 @@ def register(event, context):
     Register a new user
     """
     try:
+        # Check if public signup is allowed
+        allow_public_signup = get_setting('allow_public_signup', True)
+        if not allow_public_signup:
+            return error_response("Public signup is currently disabled", status_code=403)
+
         body = json.loads(event.get('body', '{}'))
-        
+
         # Validate input
         is_valid, errors = validate_registration_data(body)
         if not is_valid:
             return validation_error_response("Validation failed", errors)
-        
-    
+
+
         email = body['email'].lower().strip()
         password = body['password']
         first_name = body['first_name'].strip()
@@ -46,10 +52,15 @@ def register(event, context):
         if existing_user:
             return error_response("Email already registered", status_code=409)
         
+        # Get settings
+        default_public_role = get_setting('default_public_role', 'customer')
+        email_verification_required = get_setting('email_verification_required', True)
+        require_otp_on_registration = get_setting('require_otp_on_registration', True)
+
         # Create user
         user_id = str(uuid.uuid4())
         hashed_password = hash_password(password)
-        
+
         user_data = {
             'user_id': user_id,
             'email': email,
@@ -57,28 +68,34 @@ def register(event, context):
             'first_name': first_name,
             'last_name': last_name,
             'phone': phone,
-            'role': 'customer',  # Default role for public registration (external user)
+            'role': default_public_role,  # Default role from settings
             'tenant_id': None,  # Customers are global users, not scoped to a tenant
-            'is_verified': False,
+            'is_verified': not email_verification_required,  # Skip verification if not required
             'is_locked': False,
             'failed_login_attempts': 0,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
-        
+
         UserDB.create_user(user_data)
-        
-        # Generate and send verification codes
-        # Email verification
-        email_code_data = create_verification_record(user_id, 'email')
-        VerificationCodeDB.create_code(email_code_data)
-        send_email_verification(email, email_code_data['code'])
-        
-        # SMS verification (if phone provided)
-        if phone:
-            sms_code_data = create_verification_record(user_id, 'sms')
-            VerificationCodeDB.create_code(sms_code_data)
-            send_sms_verification(phone, sms_code_data['code'])
+
+        # Generate and send verification codes (if OTP is required)
+        verification_message = ""
+        if require_otp_on_registration and email_verification_required:
+            # Email verification
+            email_code_data = create_verification_record(user_id, 'email')
+            VerificationCodeDB.create_code(email_code_data)
+            send_email_verification(email, email_code_data['code'])
+            verification_message = "Please verify your email"
+
+            # SMS verification (if phone provided)
+            if phone:
+                sms_code_data = create_verification_record(user_id, 'sms')
+                VerificationCodeDB.create_code(sms_code_data)
+                send_sms_verification(phone, sms_code_data['code'])
+                verification_message = "Please verify your email and phone"
+        else:
+            verification_message = "Registration complete"
         
         # Return user data (without password)
         user_response = {
@@ -87,14 +104,14 @@ def register(event, context):
             'first_name': first_name,
             'last_name': last_name,
             'phone': phone,
-            'role': 'customer',
-            'is_verified': False,
+            'role': default_public_role,
+            'is_verified': user_data['is_verified'],
             'created_at': user_data['created_at']
         }
-        
+
         return success_response(
             data=user_response,
-            message="Registration successful. Please verify your email and phone.",
+            message=f"Registration successful. {verification_message}",
             status_code=201
         )
         
