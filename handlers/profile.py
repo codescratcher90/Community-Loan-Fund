@@ -13,6 +13,8 @@ from utils import (
     error_response,
     validation_error_response
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import update_profile_schema
 from middleware import require_auth, get_current_user
 
 @require_auth()
@@ -53,6 +55,7 @@ def get_me(event, context):
 
 
 @require_auth()
+@validate_request_body(update_profile_schema)
 def update_me(event, context):
     """
     PUT /auth/me

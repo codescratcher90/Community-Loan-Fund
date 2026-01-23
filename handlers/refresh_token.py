@@ -14,7 +14,10 @@ from utils import (
     error_response,
     unauthorized_response
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import refresh_token_schema
 
+@validate_request_body(refresh_token_schema)
 def refresh(event, context):
     """
     POST /auth/refresh

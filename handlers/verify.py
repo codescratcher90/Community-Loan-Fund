@@ -10,7 +10,10 @@ from utils import (
     error_response,
     validation_error_response
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import verification_schema
 
+@validate_request_body(verification_schema)
 def verify(event, context):
     """
     POST /auth/verify
