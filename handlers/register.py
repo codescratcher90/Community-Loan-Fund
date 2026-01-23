@@ -19,9 +19,12 @@ from utils import (
     send_sms_verification,
     get_setting
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import registration_schema, master_registration_schema
 from middleware import register_rate_limit
 
 @register_rate_limit()
+@validate_request_body(registration_schema)
 def register(event, context):
     """
     POST /auth/register
@@ -123,6 +126,7 @@ def register(event, context):
 
 
 @register_rate_limit()
+@validate_request_body(master_registration_schema)
 def register_master(event, context):
     """
     POST /auth/register-master

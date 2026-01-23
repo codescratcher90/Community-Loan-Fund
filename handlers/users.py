@@ -17,6 +17,8 @@ from utils import (
     validation_error_response,
     get_setting
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import create_user_schema, update_role_schema
 from middleware import require_auth, get_current_user
 
 @require_auth(required_role='admin')
@@ -126,6 +128,7 @@ def get_user(event, context):
 
 
 @require_auth(required_role='admin')
+@validate_request_body(update_role_schema)
 def update_user_role(event, context):
     """
     PUT /users/:id/role
@@ -252,6 +255,7 @@ def delete_user(event, context):
 
 
 @require_auth(required_role='admin')
+@validate_request_body(create_user_schema)
 def create_internal_user(event, context):
     """
     POST /users

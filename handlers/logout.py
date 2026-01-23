@@ -7,9 +7,12 @@ from utils import (
     success_response,
     error_response
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import logout_schema
 from middleware import require_auth
 
 @require_auth()
+@validate_request_body(logout_schema)
 def logout(event, context):
     """
     POST /auth/logout

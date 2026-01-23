@@ -17,11 +17,14 @@ from utils import (
     validation_error_response,
     get_setting
 )
+from utils.schema_validator import validate_request_body
+from utils.schemas import login_schema
 from decimal import Decimal
 
 from middleware import login_rate_limit
 
 @login_rate_limit()
+@validate_request_body(login_schema)
 def login(event, context):
     """
     POST /auth/login
