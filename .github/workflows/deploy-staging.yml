@@ -4,7 +4,7 @@ on:
   workflow_dispatch:  # Manual trigger only
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
   APP_NAME: ${{ vars.APP_NAME || 'basic-auth' }}  # Default to 'basic-auth' if not set
   ENVIRONMENT: staging
 
@@ -22,7 +22,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,7 +45,7 @@ jobs:
           sam deploy \
             --stack-name ${{ env.APP_NAME }}-${{ env.ENVIRONMENT }} \
             --capabilities CAPABILITY_IAM \
-            --region ${{ secrets.AWS_REGION }} \
+            --region ${{ vars.AWS_REGION }} \
             --resolve-s3 \
             --parameter-overrides \
               AppName=${{ env.APP_NAME }} \

@@ -17,7 +17,7 @@ on:
         default: ''
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
 
 jobs:
   destroy:
@@ -42,7 +42,7 @@ jobs:
         with:
           aws-access-key-id: ${{ github.event.inputs.environment == 'prod' && secrets.AWS_ACCESS_KEY_ID_PROD || secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ github.event.inputs.environment == 'prod' && secrets.AWS_SECRET_ACCESS_KEY_PROD || secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Set up SAM CLI
         uses: aws-actions/setup-sam@v2
@@ -53,7 +53,7 @@ jobs:
         id: check-stack
         run: |
           STACK_NAME="basic-auth-${{ github.event.inputs.environment }}"
-          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ vars.AWS_REGION }} 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "✓ Stack $STACK_NAME exists"
           else
@@ -76,7 +76,7 @@ jobs:
           # Delete the stack
           sam delete \
             --stack-name $STACK_NAME \
-            --region ${{ secrets.AWS_REGION }} \
+            --region ${{ vars.AWS_REGION }} \
             --no-prompts
 
           echo "✓ Stack deletion initiated"
@@ -89,7 +89,7 @@ jobs:
 
           aws cloudformation wait stack-delete-complete \
             --stack-name $STACK_NAME \
-            --region ${{ secrets.AWS_REGION }} || true
+            --region ${{ vars.AWS_REGION }} || true
 
           echo "✓ Stack deletion completed"
 
@@ -97,7 +97,7 @@ jobs:
         run: |
           STACK_NAME="basic-auth-${{ github.event.inputs.environment }}"
 
-          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ secrets.AWS_REGION }} 2>/dev/null; then
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ vars.AWS_REGION }} 2>/dev/null; then
             echo "⚠️  Stack still exists - deletion may have failed"
             exit 1
           else
