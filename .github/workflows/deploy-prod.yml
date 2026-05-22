@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
@@ -90,9 +90,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          printf '## Production Deployment\n\n**API URL:** %s\n**Deployed:** %s' \
+            "${{ steps.get-url.outputs.API_URL }}" \
+            "${{ github.sha }}" > /tmp/release-notes.md
           gh release create "${{ github.ref_name }}" \
             --title "Release ${{ github.ref_name }}" \
-            --notes "## Production Deployment
-
-**API URL:** ${{ steps.get-url.outputs.API_URL }}
-**Deployed:** ${{ github.sha }}"
+            --notes-file /tmp/release-notes.md
