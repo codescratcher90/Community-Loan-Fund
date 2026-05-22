@@ -1,0 +1,98 @@
+name: Destroy Production Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DESTROY-PRODUCTION" to confirm (ALL PROD DATA WILL BE LOST)'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  APP_NAME: ${{ vars.APP_NAME || 'basic-auth' }}
+  ENVIRONMENT: prod
+
+jobs:
+  destroy:
+    name: Destroy Production Environment
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DESTROY-PRODUCTION" ]; then
+            echo "❌ Destruction cancelled - you must type 'DESTROY-PRODUCTION' to confirm"
+            exit 1
+          fi
+          echo "⚠️  Confirmation received - proceeding with destruction"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@v3
+        with:
+          use-installer: true
+
+      - name: Check if stack exists
+        id: check-stack
+        run: |
+          STACK_NAME="${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}"
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ vars.AWS_REGION }} 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✓ Stack $STACK_NAME exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  Stack $STACK_NAME does not exist"
+          fi
+
+      - name: Delete CloudFormation Stack
+        if: steps.check-stack.outputs.exists == 'true'
+        run: |
+          STACK_NAME="${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}"
+          sam delete \
+            --stack-name $STACK_NAME \
+            --region ${{ vars.AWS_REGION }} \
+            --no-prompts
+
+      - name: Wait for stack deletion
+        if: steps.check-stack.outputs.exists == 'true'
+        run: |
+          STACK_NAME="${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}"
+          aws cloudformation wait stack-delete-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ vars.AWS_REGION }} || true
+
+      - name: Verify deletion
+        run: |
+          STACK_NAME="${{ env.APP_NAME }}-${{ env.ENVIRONMENT }}"
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ vars.AWS_REGION }} 2>/dev/null; then
+            echo "⚠️  Stack still exists - deletion may have failed"
+            exit 1
+          else
+            echo "✓ Stack successfully deleted"
+            echo "### ✅ Destruction Complete" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Environment:** ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Stack:** $STACK_NAME" >> $GITHUB_STEP_SUMMARY
+            echo "All resources have been removed from AWS." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Clean up SAM S3 bucket
+        if: always()
+        run: |
+          BUCKET_NAME=$(aws s3 ls | grep "aws-sam-cli-managed-default" | awk '{print $3}' || echo "")
+          if [ -n "$BUCKET_NAME" ]; then
+            aws s3 rm s3://$BUCKET_NAME --recursive || true
+            aws s3 rb s3://$BUCKET_NAME || true
+            echo "✓ SAM S3 bucket cleaned up"
+          fi
