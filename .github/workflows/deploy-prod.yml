@@ -39,7 +39,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -87,16 +87,12 @@ jobs:
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          body: |
-            ## Production Deployment
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Release ${{ github.ref_name }}" \
+            --notes "## Production Deployment
 
-            **API URL:** ${{ steps.get-url.outputs.API_URL }}
-            **Deployed:** ${{ github.sha }}
-          draft: false
-          prerelease: false
+**API URL:** ${{ steps.get-url.outputs.API_URL }}
+**Deployed:** ${{ github.sha }}"
