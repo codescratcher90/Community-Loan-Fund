@@ -15,6 +15,7 @@ registration_schema = Schema({
     'email': SchemaField(
         field_type=str,
         required=True,
+        max_length=254,
         custom_validator=validate_email,
         description="User email address"
     ),
@@ -56,6 +57,7 @@ master_registration_schema = Schema({
     'email': SchemaField(
         field_type=str,
         required=True,
+        max_length=254,
         custom_validator=validate_email,
         description="User email address"
     ),
@@ -192,6 +194,7 @@ create_user_schema = Schema({
     'email': SchemaField(
         field_type=str,
         required=True,
+        max_length=254,
         custom_validator=validate_email,
         description="User email address"
     ),
