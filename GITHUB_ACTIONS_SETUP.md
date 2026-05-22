@@ -114,7 +114,18 @@ Click the **Variables** tab:
 > 💡 **White-Label Deployments:** Change `APP_NAME` to deploy multiple instances!
 > See **[GITHUB_ACTIONS_APP_NAME.md](GITHUB_ACTIONS_APP_NAME.md)** for details.
 
-#### 3b. Add Secrets (Sensitive Data)
+#### 3b. Add Variables (Non-Sensitive Config)
+
+Click the **Variables** tab and add:
+
+| Variable Name | Value | Example |
+|---------------|-------|---------|
+| `APP_NAME` | Your app name | `basic-auth`, `hotel-manager` |
+| `AWS_REGION` | Your AWS region | `eu-north-1` |
+
+> ℹ️ `AWS_REGION` is **not sensitive** — it is stored as a variable (not a secret) so it appears unmasked in deployment summaries and logs.
+
+#### 3c. Add Secrets (Sensitive Data)
 
 Click the **Secrets** tab and add:
 
@@ -124,7 +135,6 @@ Click the **Secrets** tab and add:
 |-------------|-------|---------|
 | `AWS_ACCESS_KEY_ID` | Your AWS Access Key ID | `AKIAIOSFODNN7EXAMPLE` |
 | `AWS_SECRET_ACCESS_KEY` | Your AWS Secret Access Key | `wJalrXUtnFEMI/K7MDENG...` |
-| `AWS_REGION` | Your AWS region | `eu-north-1` |
 | `JWT_SECRET` | Generated secret | `kX8fJ2mN9pL3qR5tV7wY0zB4cD6eG8hI` |
 | `REFRESH_TOKEN_SECRET` | Generated secret | `A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6` |
 | `MASTER_SECRET_KEY` | Generated secret | `Z9Y8X7W6V5U4T3S2R1Q0P9O8N7M6L5K4` |
@@ -459,12 +469,12 @@ git push origin v1.0.0
 
 - [ ] Create IAM user in AWS with required permissions
 - [ ] Generate 3 secure secrets (JWT, Refresh, Master)
-- [ ] Add **Variable** to GitHub (Settings → Actions → Variables):
+- [ ] Add **Variables** to GitHub (Settings → Actions → Variables):
   - [ ] `APP_NAME` (e.g., `basic-auth`, `hotel-manager`, or custom name)
+  - [ ] `AWS_REGION` (e.g., `eu-north-1`) — not a secret, stored as a variable so it shows in deployment URLs
 - [ ] Add **Secrets** to GitHub (Settings → Actions → Secrets):
   - [ ] `AWS_ACCESS_KEY_ID`
   - [ ] `AWS_SECRET_ACCESS_KEY`
-  - [ ] `AWS_REGION`
   - [ ] `JWT_SECRET`
   - [ ] `REFRESH_TOKEN_SECRET`
   - [ ] `MASTER_SECRET_KEY`
