@@ -12,6 +12,7 @@ Permission design: secure by default.
   Only master bypasses all permission checks.
 """
 import boto3
+import time
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Optional
@@ -22,12 +23,19 @@ from config import config
 dynamodb = boto3.resource('dynamodb')
 settings_table = dynamodb.Table(config.APP_SETTINGS_TABLE)
 
+# Cache TTL — both caches expire after this many seconds so that manual
+# DynamoDB edits propagate to all warm Lambda containers automatically.
+_CACHE_TTL = 60  # seconds
+
 # ── General settings cache ────────────────────────────────────────────────
 _settings_cache: Dict[str, Any] = {}
-_cache_initialized = False
+_settings_cache_expires_at: float = 0.0
 
 # ── Resource permission cache (separate — different invalidation needs) ───
+# Values: None → no record exists (deny); dict → the stored config
+# Each key's expiry is stored alongside: _resource_permission_cache_expires[key]
 _resource_permission_cache: Dict[str, Optional[dict]] = {}
+_resource_permission_cache_expires: Dict[str, float] = {}
 
 # Default app settings
 DEFAULT_SETTINGS = {
@@ -87,9 +95,13 @@ def initialize_settings():
         raise
 
 
+def _settings_cache_expired() -> bool:
+    return time.time() >= _settings_cache_expires_at
+
+
 def load_settings() -> Dict[str, Any]:
-    """Load all general settings from DynamoDB into cache."""
-    global _settings_cache, _cache_initialized
+    """Load all general settings from DynamoDB into cache and reset TTL."""
+    global _settings_cache, _settings_cache_expires_at
 
     try:
         response = settings_table.scan()
@@ -104,8 +116,8 @@ def load_settings() -> Dict[str, Any]:
             value = _convert_dynamodb_types(item['setting_value'])
             _settings_cache[key] = value
 
-        _cache_initialized = True
-        print(f"[INFO] Loaded {len(_settings_cache)} settings into cache")
+        _settings_cache_expires_at = time.time() + _CACHE_TTL
+        print(f"[INFO] Loaded {len(_settings_cache)} settings into cache (TTL {_CACHE_TTL}s)")
         return _settings_cache
 
     except Exception as e:
@@ -114,8 +126,7 @@ def load_settings() -> Dict[str, Any]:
 
 
 def get_setting(key: str, default: Any = None) -> Any:
-    global _cache_initialized
-    if not _cache_initialized:
+    if _settings_cache_expired():
         load_settings()
     value = _settings_cache.get(key, default)
     if value is None and key in DEFAULT_SETTINGS:
@@ -124,14 +135,12 @@ def get_setting(key: str, default: Any = None) -> Any:
 
 
 def get_all_settings() -> Dict[str, Any]:
-    global _cache_initialized
-    if not _cache_initialized:
+    if _settings_cache_expired():
         load_settings()
     return _settings_cache.copy()
 
 
 def update_setting(key: str, value: Any) -> None:
-    global _settings_cache
     settings_table.put_item(Item={
         'setting_key':   key,
         'setting_value': value,
@@ -147,11 +156,10 @@ def update_settings(settings: Dict[str, Any]) -> None:
 
 
 def clear_cache():
-    """Clear the general settings cache."""
-    global _settings_cache, _cache_initialized
-    _settings_cache = {}
-    _cache_initialized = False
-    print("[INFO] Settings cache cleared")
+    """Force-expire the general settings cache so the next read hits DynamoDB."""
+    global _settings_cache_expires_at
+    _settings_cache_expires_at = 0.0
+    print("[INFO] Settings cache expired")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -160,19 +168,23 @@ def clear_cache():
 
 def get_resource_config(resource: str) -> Optional[dict]:
     """
-    Return the operations dict for a resource from cache or DynamoDB.
+    Return the full permission record for a resource from cache or DynamoDB.
     Returns None if no record exists — caller must treat as denied.
     Fails closed on DynamoDB errors.
+    Cache entry expires after _CACHE_TTL seconds so direct DynamoDB edits
+    propagate automatically.
     """
     cache_key = f'resource_permission:{resource}'
 
-    if cache_key in _resource_permission_cache:
+    if (cache_key in _resource_permission_cache
+            and time.time() < _resource_permission_cache_expires.get(cache_key, 0)):
         return _resource_permission_cache[cache_key]
 
     try:
         response = settings_table.get_item(Key={'setting_key': cache_key})
         value = response['Item'].get('setting_value') if 'Item' in response else None
         _resource_permission_cache[cache_key] = value
+        _resource_permission_cache_expires[cache_key] = time.time() + _CACHE_TTL
         return value
     except Exception as e:
         print(f"[ERROR] Failed to get resource config for '{resource}': {e}")
@@ -228,8 +240,10 @@ def set_resource_config(
         'setting_type':  'map',
     })
 
-    # Auto-clear this resource from cache so next request re-reads from DB
-    _resource_permission_cache.pop(cache_key, None)
+    # Write the new value into cache immediately so this container doesn't
+    # re-read from DynamoDB, and reset the TTL.
+    _resource_permission_cache[cache_key] = record
+    _resource_permission_cache_expires[cache_key] = time.time() + _CACHE_TTL
 
     return record
 
@@ -277,10 +291,9 @@ def seed_default_permissions() -> dict:
 
 
 def clear_resource_permission_cache() -> None:
-    """Clear the in-memory resource permission cache."""
-    global _resource_permission_cache
-    _resource_permission_cache = {}
-    print("[INFO] Resource permission cache cleared")
+    """Force-expire all resource permission cache entries so next reads hit DynamoDB."""
+    _resource_permission_cache_expires.clear()
+    print("[INFO] Resource permission cache expired")
 
 
 def get_all_resource_configs() -> dict:
