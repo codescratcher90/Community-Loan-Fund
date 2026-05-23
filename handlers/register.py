@@ -88,7 +88,16 @@ def register(event, context):
             # Email verification
             email_code_data = create_verification_record(user_id, 'email')
             VerificationCodeDB.create_code(email_code_data)
-            send_email_verification(email, email_code_data['code'])
+
+            if not send_email_verification(email, email_code_data['code']):
+                # Roll back — delete the user so they can retry registration
+                UserDB.delete_user(user_id)
+                return error_response(
+                    "Registration failed: could not send verification email. "
+                    "Please check your email address and try again.",
+                    status_code=500
+                )
+
             verification_message = "Please verify your email"
 
             # SMS verification (if phone provided)
