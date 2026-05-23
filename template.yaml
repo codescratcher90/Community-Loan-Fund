@@ -124,6 +124,12 @@ Resources:
             RestApiId: !Ref AuthAPI
             Path: /auth/verify
             Method: POST
+        ResendOtpAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /auth/resend-otp
+            Method: POST
         LoginAPI:
           Type: Api
           Properties:
@@ -259,6 +265,12 @@ Resources:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /auth/resend-otp:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
           /auth/login:
             post:
               x-amazon-apigateway-integration:
@@ -364,6 +376,8 @@ Resources:
           AttributeType: S
         - AttributeName: email
           AttributeType: S
+        - AttributeName: phone
+          AttributeType: S
       KeySchema:
         - AttributeName: user_id
           KeyType: HASH
@@ -371,6 +385,12 @@ Resources:
         - IndexName: email-index
           KeySchema:
             - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: phone-index
+          KeySchema:
+            - AttributeName: phone
               KeyType: HASH
           Projection:
             ProjectionType: ALL

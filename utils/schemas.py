@@ -3,47 +3,68 @@ Schema definitions for all API endpoints.
 Each schema defines required fields, optional fields, types, and constraints.
 """
 
-from utils.schema_validator import Schema, SchemaField
+from utils.schema_validator import Schema, SchemaField, ValidationError
 from utils.validators import validate_email, validate_password, validate_phone, validate_name
 from config.permissions import VALID_ROLES
+from config.otp import ALL_OTP_TYPES
+
+
+def _require_email_or_phone(data):
+    if not data.get('email') and not data.get('phone'):
+        raise ValidationError(
+            "At least one of email or phone is required",
+            {"contact": "At least one of email or phone is required"},
+        )
+
+
+def _require_email_or_phone_login(data):
+    if not data.get('email') and not data.get('phone'):
+        raise ValidationError(
+            "Email or phone is required",
+            {"contact": "Email or phone is required"},
+        )
 
 
 # ==================== Authentication Schemas ====================
 
 # POST /auth/register
-registration_schema = Schema({
-    'email': SchemaField(
-        field_type=str,
-        required=True,
-        max_length=254,
-        custom_validator=validate_email,
-        description="User email address"
-    ),
-    'password': SchemaField(
-        field_type=str,
-        required=True,
-        custom_validator=validate_password,
-        description="User password"
-    ),
-    'first_name': SchemaField(
-        field_type=str,
-        required=True,
-        custom_validator=lambda v: validate_name(v, 'first_name'),
-        description="User first name"
-    ),
-    'last_name': SchemaField(
-        field_type=str,
-        required=True,
-        custom_validator=lambda v: validate_name(v, 'last_name'),
-        description="User last name"
-    ),
-    'phone': SchemaField(
-        field_type=str,
-        required=False,
-        custom_validator=validate_phone,
-        description="User phone number (optional)"
-    )
-}, strict=True)
+registration_schema = Schema(
+    {
+        'email': SchemaField(
+            field_type=str,
+            required=False,
+            max_length=254,
+            custom_validator=validate_email,
+            description="User email address (email or phone required)"
+        ),
+        'phone': SchemaField(
+            field_type=str,
+            required=False,
+            custom_validator=validate_phone,
+            description="User phone number (email or phone required)"
+        ),
+        'password': SchemaField(
+            field_type=str,
+            required=True,
+            custom_validator=validate_password,
+            description="User password"
+        ),
+        'first_name': SchemaField(
+            field_type=str,
+            required=True,
+            custom_validator=lambda v: validate_name(v, 'first_name'),
+            description="User first name"
+        ),
+        'last_name': SchemaField(
+            field_type=str,
+            required=True,
+            custom_validator=lambda v: validate_name(v, 'last_name'),
+            description="User last name"
+        ),
+    },
+    strict=True,
+    cross_field_validators=[_require_email_or_phone],
+)
 
 
 # POST /auth/register-master
@@ -102,30 +123,57 @@ verification_schema = Schema({
         pattern=r'^\d{6}$',
         description="6-digit verification code"
     ),
-    'code_type': SchemaField(
+    'otp_type': SchemaField(
         field_type=str,
         required=True,
-        allowed_values=['email', 'sms'],
-        description="Type of verification code"
+        allowed_values=ALL_OTP_TYPES,
+        description="OTP type"
+    )
+}, strict=True)
+
+
+# POST /auth/resend-otp
+resend_otp_schema = Schema({
+    'user_id': SchemaField(
+        field_type=str,
+        required=True,
+        min_length=1,
+        description="User ID"
+    ),
+    'otp_type': SchemaField(
+        field_type=str,
+        required=True,
+        allowed_values=ALL_OTP_TYPES,
+        description="OTP type to resend"
     )
 }, strict=True)
 
 
 # POST /auth/login
-login_schema = Schema({
-    'email': SchemaField(
-        field_type=str,
-        required=True,
-        custom_validator=validate_email,
-        description="User email address"
-    ),
-    'password': SchemaField(
-        field_type=str,
-        required=True,
-        min_length=1,
-        description="User password"
-    )
-}, strict=True)
+login_schema = Schema(
+    {
+        'email': SchemaField(
+            field_type=str,
+            required=False,
+            custom_validator=validate_email,
+            description="User email address (email or phone required)"
+        ),
+        'phone': SchemaField(
+            field_type=str,
+            required=False,
+            custom_validator=validate_phone,
+            description="User phone number (email or phone required)"
+        ),
+        'password': SchemaField(
+            field_type=str,
+            required=True,
+            min_length=1,
+            description="User password"
+        ),
+    },
+    strict=True,
+    cross_field_validators=[_require_email_or_phone_login],
+)
 
 
 # POST /auth/refresh
@@ -166,11 +214,18 @@ update_profile_schema = Schema({
         custom_validator=lambda v: validate_name(v, 'last_name'),
         description="User last name"
     ),
+    'email': SchemaField(
+        field_type=str,
+        required=False,
+        max_length=254,
+        custom_validator=validate_email,
+        description="New email address (sends verification OTP)"
+    ),
     'phone': SchemaField(
         field_type=str,
         required=False,
         custom_validator=validate_phone,
-        description="User phone number"
+        description="New phone number (sends verification OTP)"
     ),
     'password': SchemaField(
         field_type=str,
@@ -317,6 +372,7 @@ ROUTE_SCHEMAS = {
     'POST /auth/register':          registration_schema,
     'POST /auth/register-master':   master_registration_schema,
     'POST /auth/verify':            verification_schema,
+    'POST /auth/resend-otp':        resend_otp_schema,
     'POST /auth/login':             login_schema,
     'POST /auth/refresh':           refresh_token_schema,
     'POST /auth/logout':            logout_schema,

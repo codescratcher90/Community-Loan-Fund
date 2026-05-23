@@ -36,6 +36,16 @@ class UserDB:
         )
         items = response.get('Items', [])
         return items[0] if items else None
+
+    @staticmethod
+    def get_user_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+        """Get user by normalized phone number"""
+        response = users_table.query(
+            IndexName='phone-index',
+            KeyConditionExpression=Key('phone').eq(phone)
+        )
+        items = response.get('Items', [])
+        return items[0] if items else None
     
     @staticmethod
     def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
@@ -237,26 +247,26 @@ class VerificationCodeDB:
         )
     
     @staticmethod
-    def verify_code(user_id: str, code_type: str, code: str) -> bool:
-        """Verify a code"""
+    def verify_code(user_id: str, code_type: str, code: str) -> Optional[Dict[str, Any]]:
+        """
+        Verify a code. Returns the full OTP record on success so callers
+        can read the 'contact' field. Returns None if invalid or expired.
+        """
         stored_code = VerificationCodeDB.get_code(user_id, code_type)
-        
+
         if not stored_code:
-            return False
-        
-        # Check if code matches
+            return None
+
         if stored_code.get('code') != code:
-            return False
-        
-        # Check if expired
+            return None
+
         expires_at = datetime.fromisoformat(stored_code.get('expires_at'))
         if datetime.utcnow() > expires_at:
             VerificationCodeDB.delete_code(user_id, code_type)
-            return False
-        
-        # Code is valid, delete it
+            return None
+
         VerificationCodeDB.delete_code(user_id, code_type)
-        return True
+        return stored_code
 
 
 class LoginAttemptDB:

@@ -90,72 +90,84 @@ def validate_role(role: str) -> tuple[bool, Optional[str]]:
 
 def validate_registration_data(data: Dict) -> tuple[bool, Optional[Dict]]:
     """
-    Validate registration data
+    Validate registration data.
+    Email or phone (at least one) is required.
     Returns (is_valid, errors_dict)
     """
     errors = {}
-    
-    # Validate email
-    valid, error = validate_email(data.get('email', ''))
-    if not valid:
-        errors['email'] = error
-    
-    # Validate password
-    valid, error = validate_password(data.get('password', ''))
-    if not valid:
-        errors['password'] = error
-    
-    # Validate first name
-    valid, error = validate_name(data.get('first_name', ''), "First name")
-    if not valid:
-        errors['first_name'] = error
-    
-    # Validate last name
-    valid, error = validate_name(data.get('last_name', ''), "Last name")
-    if not valid:
-        errors['last_name'] = error
-    
-    # Validate phone (optional but if provided, must be valid)
-    phone = data.get('phone')
+
+    email = data.get('email', '').strip() if data.get('email') else None
+    phone = data.get('phone', '').strip() if data.get('phone') else None
+
+    if not email and not phone:
+        errors['contact'] = "At least one of email or phone is required"
+
+    if email:
+        valid, error = validate_email(email)
+        if not valid:
+            errors['email'] = error
+
     if phone:
         valid, error = validate_phone(phone)
         if not valid:
             errors['phone'] = error
-    
+
+    valid, error = validate_password(data.get('password', ''))
+    if not valid:
+        errors['password'] = error
+
+    valid, error = validate_name(data.get('first_name', ''), "First name")
+    if not valid:
+        errors['first_name'] = error
+
+    valid, error = validate_name(data.get('last_name', ''), "Last name")
+    if not valid:
+        errors['last_name'] = error
+
     return len(errors) == 0, errors if errors else None
 
 
 def validate_login_data(data: Dict) -> tuple[bool, Optional[Dict]]:
     """
-    Validate login data
+    Validate login data.
+    Email or phone (at least one) is required.
     Returns (is_valid, errors_dict)
     """
     errors = {}
-    
-    # Validate email
-    valid, error = validate_email(data.get('email', ''))
-    if not valid:
-        errors['email'] = error
-    
-    # Validate password
+
+    email = data.get('email', '').strip() if data.get('email') else None
+    phone = data.get('phone', '').strip() if data.get('phone') else None
+
+    if not email and not phone:
+        errors['contact'] = "Email or phone is required"
+
+    if email:
+        valid, error = validate_email(email)
+        if not valid:
+            errors['email'] = error
+
+    if phone:
+        valid, error = validate_phone(phone)
+        if not valid:
+            errors['phone'] = error
+
     if not data.get('password'):
         errors['password'] = "Password is required"
-    
+
     return len(errors) == 0, errors if errors else None
 
 
 def validate_verification_data(data: Dict) -> tuple[bool, Optional[Dict]]:
     """
-    Validate verification data
+    Validate OTP verification data.
     Returns (is_valid, errors_dict)
     """
+    from config.otp import ALL_OTP_TYPES
     errors = {}
-    
-    # Validate user_id
+
     if not data.get('user_id'):
         errors['user_id'] = "User ID is required"
-    
-    # Validate code
+
     code = data.get('code', '')
     if not code:
         errors['code'] = "Verification code is required"
@@ -163,12 +175,11 @@ def validate_verification_data(data: Dict) -> tuple[bool, Optional[Dict]]:
         errors['code'] = "Verification code must be numeric"
     elif len(code) != 6:
         errors['code'] = "Verification code must be 6 digits"
-    
-    # Validate code_type
-    code_type = data.get('code_type', '')
-    if not code_type:
-        errors['code_type'] = "Code type is required"
-    elif code_type not in ['email', 'sms']:
-        errors['code_type'] = "Code type must be 'email' or 'sms'"
-    
+
+    otp_type = data.get('otp_type', '')
+    if not otp_type:
+        errors['otp_type'] = "OTP type is required"
+    elif otp_type not in ALL_OTP_TYPES:
+        errors['otp_type'] = "Invalid OTP type"
+
     return len(errors) == 0, errors if errors else None

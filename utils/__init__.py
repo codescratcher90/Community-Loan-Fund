@@ -15,10 +15,19 @@ from .jwt_utils import (
 )
 from .password import hash_password, verify_password
 from .verification import (
+    generate_otp,
+    create_otp_record,
+    check_resend_cooldown,
+    mask_email,
+    mask_phone,
+    normalize_phone,
+    send_email_otp,
+    send_sms_otp,
+    # backward-compatible aliases
     generate_verification_code,
     send_email_verification,
     send_sms_verification,
-    create_verification_record
+    create_verification_record,
 )
 from .responses import (
     # Core response builders
@@ -76,6 +85,14 @@ __all__ = [
     'hash_password',
     'verify_password',
     # Verification
+    'generate_otp',
+    'create_otp_record',
+    'check_resend_cooldown',
+    'mask_email',
+    'mask_phone',
+    'normalize_phone',
+    'send_email_otp',
+    'send_sms_otp',
     'generate_verification_code',
     'send_email_verification',
     'send_sms_verification',
