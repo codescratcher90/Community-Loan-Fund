@@ -219,9 +219,41 @@ Handled entirely via GitHub Actions. All workflows are `workflow_dispatch` (manu
 
 ---
 
+## Growth Expectations
+
+This system is designed to grow significantly. Keep this in mind on every change:
+
+**Many more endpoints are coming.** Each new domain feature (bookings, products, schedules,
+invoices, etc.) adds handlers, schemas, routes, and SAM events. Design every piece to be
+added to, not rewritten.
+
+**Patterns to follow when adding an endpoint:**
+1. Add named action constant to `Actions` class in `config/permissions.py`
+2. Add it to the relevant roles in `ROLE_PERMISSIONS` (code default)
+3. Create schema in `utils/schemas.py`, register it in `ROUTE_SCHEMAS`
+4. Write handler in the appropriate `handlers/` file
+5. Add route to `ROUTES` dict in `lambda_function.py`
+6. Add API Gateway event + swagger path in `template.yaml`
+7. Use `@require_auth(action=Actions.YOUR_ACTION)` — never hardcode role strings
+
+**Permission system will evolve.** The current model (role → flat action list) works for
+auth-level permissions. As the system grows into domain resources (students, bookings,
+products), consider migrating to a resource-centric model:
+`PERMISSION#resource → {create:[roles], read:[roles], update:[roles], delete:[roles]}`
+This is more intuitive for product teams and scales better across many resources.
+
+**Cache invalidation will matter more at scale.** Warm Lambda containers cache permissions
+in memory. A cache-clear endpoint (`POST /settings/permissions/cache/clear`) should be
+added before the permissions system is used heavily in production.
+
+**Secure by default.** Any new permission check that has no DB record and no code default
+should **deny**, not silently allow. Never add a fallback that grants access.
+
+---
+
 ## Known Issues & Tech Debt
 
-See `Next Steps.md` for the full prioritised list. Critical items:
+See `docs/next-steps.md` for the full prioritised list. Critical items:
 
 1. `lambda_function.py` logs the master secret key and full request body to CloudWatch on every request — remove all debug `print` statements before handling real users
 2. `LoginAttemptDB.count_recent_attempts` queries a GSI that does not exist — remove the `IndexName` parameter
