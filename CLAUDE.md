@@ -228,6 +228,36 @@ Handled entirely via GitHub Actions. All workflows are `workflow_dispatch` (manu
 
 ---
 
+## Documentation Standards
+
+All files under `docs/frontend/` follow a strict format. Apply it whenever updating
+or creating a doc file in that directory.
+
+**File structure:**
+1. `# Title` + 2–3 line description
+2. `## Contents` table with `[Endpoint description](#anchor-id)` links for every endpoint
+3. One section per endpoint, with:
+   - `<a id="method-path-segments"></a>` anchor immediately before the heading
+   - `## \`METHOD /path\`` heading (backtick-wrapped for monospace rendering)
+   - ` ```http\nMETHOD /path\n``` ` fenced code block (copyable endpoint line)
+   - One-line description
+   - `**Auth:**` and `**Prerequisites:**` lines (both required, write "None" if not applicable)
+   - `### Request Body` table (if the endpoint takes a body)
+   - `### Response \`NNN\`` with a JSON example
+   - `### Errors` table with backtick-wrapped status codes
+   - `### Example` or `### Examples` with `bash` fenced curl commands
+4. Footer navigation line: `> ← Previous: [Name](file.md) &nbsp;|&nbsp; Next → [Name](file.md)`
+   - First file: `> **Next →** [Name](file.md)` only
+   - Last file: `> ← Previous: [Name](file.md)` only
+
+**Reading order** (for navigation links):
+`overview.md` → `auth.md` → `profile.md` → `users.md` → `settings.md` → `permissions.md`
+
+**Anchor ID format:** lowercase method + path segments with slashes and braces removed,
+joined by hyphens. Examples: `post-auth-register`, `get-users-id`, `put-users-id-role`.
+
+---
+
 ## Growth Expectations
 
 This system is designed to grow significantly. Keep this in mind on every change:
