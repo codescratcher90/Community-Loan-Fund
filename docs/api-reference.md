@@ -32,22 +32,34 @@ All responses share this envelope:
 
 ### User Management
 
-| Method | Path | Min Role | Tenant Scope |
+| Method | Path | Default Min Role | Tenant Scope |
 |---|---|---|---|
-| GET | `/users` | manager | master: all users · internal: own tenant |
+| GET | `/users` | supervisor | master: all users · internal: own tenant |
 | POST | `/users` | admin | master: any tenant · internal: own tenant |
-| GET | `/users/{id}` | manager | master: any · internal: own tenant |
+| GET | `/users/{id}` | supervisor | master: any · internal: own tenant |
 | PUT | `/users/{id}/role` | admin | master: any · internal: own tenant |
 | DELETE | `/users/{id}` | master | master only |
 
-### Settings (master only)
+Min roles are the seeded defaults. Master can change them at runtime via `PUT /permissions/users`.
+
+### Settings
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/settings` | Bearer (owner+) | Get all app settings |
+| PUT | `/settings` | Bearer (master) | Update app settings (partial) |
+
+### Permissions
+
+All permission endpoints require a master token.
+Default roles shown are the seeded values and can be changed at runtime.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/settings` | Get all app settings |
-| PUT | `/settings` | Update app settings |
-| GET | `/settings/permissions` | Get all role permission sets + available actions |
-| PUT | `/settings/permissions/{role}` | Replace / grant / revoke actions for a role |
+| GET | `/permissions` | List all resource configs + seed template |
+| GET | `/permissions/{resource}` | Get one resource's operation→role map |
+| PUT | `/permissions/{resource}` | Full replace of a resource's config |
+| POST | `/permissions/seed` | Write code defaults to DynamoDB (idempotent) |
 
 ---
 
@@ -396,53 +408,140 @@ Partial updates only — omit fields you don't want to change.
 </details>
 
 <details>
-<summary><b>GET /settings/permissions</b></summary>
+<summary><b>GET /permissions</b></summary>
 
 ```bash
-curl -X GET $API_URL/settings/permissions -H "Authorization: Bearer $MASTER_TOKEN"
+curl -X GET $API_URL/permissions -H "Authorization: Bearer $MASTER_TOKEN"
 ```
 
 ```json
 {
   "data": {
-    "permissions": {
-      "owner": {"actions": ["create_user", "list_users", "logout", "..."], "source": "database"},
-      "staff": {"actions": ["logout", "read_profile", "update_profile"], "source": "default"}
+    "resources": {
+      "users": {
+        "operations": {
+          "list":        ["owner", "admin", "manager", "supervisor"],
+          "read":        ["owner", "admin", "manager", "supervisor"],
+          "create":      ["owner", "admin"],
+          "update_role": ["owner", "admin"],
+          "delete":      []
+        },
+        "created_at": "2025-05-23T10:00:00.000000",
+        "updated_at": "2025-05-23T10:00:00.000000"
+      },
+      "settings": {
+        "operations": {
+          "read":   ["owner"],
+          "update": []
+        },
+        "created_at": "2025-05-23T10:00:00.000000",
+        "updated_at": "2025-05-23T10:00:00.000000"
+      }
     },
-    "all_actions": ["create_user", "delete_user", "list_users", "login", "logout", "..."]
+    "default_config": { "...": "code defaults for reference" }
   }
 }
 ```
 
-`source` is `"database"` if the permission set has been customised via the API, or `"default"` if still using code defaults.
+`resources` reflects what is currently stored in DynamoDB. `default_config` is the hard-coded seed template.
+Empty list `[]` means master-only.
 </details>
 
 <details>
-<summary><b>PUT /settings/permissions/{role}</b></summary>
-
-Three modes — pick one per request:
+<summary><b>GET /permissions/{resource}</b></summary>
 
 ```bash
-# Full replace — set an exact action set
-curl -X PUT $API_URL/settings/permissions/coordinator \
-  -H "Authorization: Bearer $MASTER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"actions": ["logout", "read_profile", "update_profile", "list_users"]}'
-
-# Grant — add actions to the current set
-curl -X PUT $API_URL/settings/permissions/coordinator \
-  -d '{"grant": ["list_users", "read_user"]}'
-
-# Revoke — remove actions from the current set
-curl -X PUT $API_URL/settings/permissions/admin \
-  -d '{"revoke": ["update_user_role"]}'
-
-# Grant and revoke in one call
-curl -X PUT $API_URL/settings/permissions/manager \
-  -d '{"grant": ["create_user"], "revoke": ["update_user_role"]}'
+curl -X GET $API_URL/permissions/users -H "Authorization: Bearer $MASTER_TOKEN"
 ```
 
-Cannot modify `master` permissions. Returns the updated action list.
+```json
+{
+  "data": {
+    "resource": "users",
+    "operations": {
+      "list":        ["owner", "admin", "manager", "supervisor"],
+      "read":        ["owner", "admin", "manager", "supervisor"],
+      "create":      ["owner", "admin"],
+      "update_role": ["owner", "admin"],
+      "delete":      []
+    },
+    "display_name": "User Management",
+    "description": "Manage tenant users",
+    "created_at": "2025-05-23T10:00:00.000000",
+    "updated_at": "2025-05-23T10:00:00.000000"
+  }
+}
+```
+
+Returns 404 if no config exists for the resource — call `POST /permissions/seed` first.
+</details>
+
+<details>
+<summary><b>PUT /permissions/{resource}</b></summary>
+
+Full replace of a resource's operation config. Cache is auto-cleared on update so the change takes effect immediately on the current Lambda container.
+
+`display_name` and `description` are optional — if omitted they are preserved from the existing record.
+
+```bash
+# Give coordinator and staff read access to users
+curl -X PUT $API_URL/permissions/users \
+  -H "Authorization: Bearer $MASTER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operations": {
+      "list":        ["owner", "admin", "manager", "supervisor", "coordinator", "staff"],
+      "read":        ["owner", "admin", "manager", "supervisor", "coordinator", "staff"],
+      "create":      ["owner", "admin"],
+      "update_role": ["owner", "admin"],
+      "delete":      []
+    },
+    "display_name": "User Management",
+    "description":  "Manage tenant users"
+  }'
+```
+
+```json
+{
+  "data": {
+    "resource": "users",
+    "operations": {
+      "list":        ["owner", "admin", "manager", "supervisor", "coordinator", "staff"],
+      "read":        ["owner", "admin", "manager", "supervisor", "coordinator", "staff"],
+      "create":      ["owner", "admin"],
+      "update_role": ["owner", "admin"],
+      "delete":      []
+    },
+    "display_name": "User Management",
+    "description":  "Manage tenant users",
+    "created_at": "2025-05-23T10:00:00.000000",
+    "updated_at": "2025-05-23T12:00:00.000000"
+  },
+  "message": "Permissions updated for resource 'users'"
+}
+```
+
+Rules:
+- `master` always has access and must **not** be listed in any role array
+- Empty array `[]` = master-only access
+- You cannot partially update — always send the full `operations` map
+</details>
+
+<details>
+<summary><b>POST /permissions/seed</b></summary>
+
+Writes the hard-coded `DEFAULT_RESOURCE_PERMISSIONS` from `config/permissions.py` to DynamoDB. Safe to call multiple times (idempotent). Call this after a fresh deploy or after adding a new resource to code defaults.
+
+```bash
+curl -X POST $API_URL/permissions/seed -H "Authorization: Bearer $MASTER_TOKEN"
+```
+
+```json
+{
+  "data": {"seeded": ["users", "settings", "permissions"]},
+  "message": "Seeded permissions for 3 resources"
+}
+```
 </details>
 
 ---
