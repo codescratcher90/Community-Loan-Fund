@@ -1,44 +1,54 @@
 """
 Application Settings Management
-Handles reading and caching settings from DynamoDB
+Handles reading and caching settings from DynamoDB.
+
+Two separate caches live in this module:
+  _settings_cache            — general app settings (allow_public_signup, etc.)
+  _resource_permission_cache — resource → operations dict (who can do what)
+
+Permission design: secure by default.
+  get_resource_config() returns None if no record exists.
+  has_resource_permission() treats None as denied.
+  Only master bypasses all permission checks.
 """
 import boto3
 from decimal import Decimal
 from typing import Any, Dict, Optional
+from boto3.dynamodb.conditions import Attr
 from config import config
 
 # DynamoDB client
 dynamodb = boto3.resource('dynamodb')
 settings_table = dynamodb.Table(config.APP_SETTINGS_TABLE)
 
-# In-memory cache for settings (Lambda container reuse)
+# ── General settings cache ────────────────────────────────────────────────
 _settings_cache: Dict[str, Any] = {}
 _cache_initialized = False
 
-# Default settings for Phase 1
+# ── Resource permission cache (separate — different invalidation needs) ───
+_resource_permission_cache: Dict[str, Optional[dict]] = {}
+
+# Default app settings
 DEFAULT_SETTINGS = {
-    # Registration & User Creation
-    'allow_public_signup': True,
-    'allow_adding_new_users': True,
-    'require_otp_on_registration': True,
-    'email_verification_required': True,
-    'default_public_role': 'customer',
-
-    # Password Requirements
-    'min_password_length': 4,
-
-    # Account Security
-    'max_failed_login_attempts': 5,
-    'account_lockout_duration_minutes': 30,  # 0 = permanent lock
-
-    # Settings metadata
-    '_version': '1.0',
-    '_initialized': True
+    'allow_public_signup':              True,
+    'allow_adding_new_users':           True,
+    'require_otp_on_registration':      True,
+    'email_verification_required':      True,
+    'default_public_role':              'customer',
+    'min_password_length':              4,
+    'max_failed_login_attempts':        5,
+    'account_lockout_duration_minutes': 30,
+    '_version':     '1.0',
+    '_initialized': True,
 }
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Helpers
+# ═══════════════════════════════════════════════════════════════════════════
+
 def _convert_dynamodb_types(value: Any) -> Any:
-    """Convert DynamoDB Decimal types to native Python types"""
+    """Convert DynamoDB Decimal types to native Python types."""
     if isinstance(value, Decimal):
         if value % 1 == 0:
             return int(value)
@@ -46,274 +56,261 @@ def _convert_dynamodb_types(value: Any) -> Any:
     return value
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# General Settings
+# ═══════════════════════════════════════════════════════════════════════════
+
 def initialize_settings():
     """
-    Initialize settings table with default values if not already initialized.
-    Also seeds default role permissions if they have not been stored yet.
+    Seed the app_settings table with DEFAULT_SETTINGS if not already done.
     Called once on cold start; safe to call multiple times.
+    Permission defaults are NOT seeded here — use POST /settings/permissions/seed.
     """
     try:
         response = settings_table.get_item(Key={'setting_key': '_initialized'})
         if 'Item' in response:
             print("[INFO] Settings already initialized")
-            _seed_missing_permissions()
             return
 
         print("[INFO] Initializing default settings...")
         for key, value in DEFAULT_SETTINGS.items():
             settings_table.put_item(Item={
-                'setting_key': key,
+                'setting_key':   key,
                 'setting_value': value,
-                'setting_type': type(value).__name__
+                'setting_type':  type(value).__name__,
             })
-
-        _seed_missing_permissions()
         print("[INFO] Default settings initialized successfully")
 
     except Exception as e:
-        print(f"[ERROR] Failed to initialize settings: {str(e)}")
+        print(f"[ERROR] Failed to initialize settings: {e}")
         raise
 
 
-def _seed_missing_permissions():
-    """Write code-default permissions to DynamoDB for any role not yet stored."""
-    try:
-        from config.permissions import ROLE_PERMISSIONS
-        for role, actions in ROLE_PERMISSIONS.items():
-            key = f'permissions:{role}'
-            existing = settings_table.get_item(Key={'setting_key': key})
-            if 'Item' not in existing:
-                settings_table.put_item(Item={
-                    'setting_key': key,
-                    'setting_value': list(actions),
-                    'setting_type': 'list'
-                })
-                print(f"[INFO] Seeded default permissions for role: {role}")
-    except Exception as e:
-        print(f"[WARNING] Could not seed permissions: {str(e)}")
-
-
 def load_settings() -> Dict[str, Any]:
-    """
-    Load all settings from DynamoDB into cache
-    Returns dict of setting_key -> setting_value
-    """
+    """Load all general settings from DynamoDB into cache."""
     global _settings_cache, _cache_initialized
 
     try:
-        # Scan all settings from DynamoDB
         response = settings_table.scan()
         items = response.get('Items', [])
-
-        # Handle pagination if needed
         while 'LastEvaluatedKey' in response:
             response = settings_table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
             items.extend(response.get('Items', []))
 
-        # Build cache
         _settings_cache = {}
         for item in items:
-            key = item['setting_key']
+            key   = item['setting_key']
             value = _convert_dynamodb_types(item['setting_value'])
             _settings_cache[key] = value
 
         _cache_initialized = True
         print(f"[INFO] Loaded {len(_settings_cache)} settings into cache")
-
         return _settings_cache
 
     except Exception as e:
-        print(f"[ERROR] Failed to load settings: {str(e)}")
-        # Return default settings as fallback
+        print(f"[ERROR] Failed to load settings: {e}")
         return DEFAULT_SETTINGS.copy()
 
 
 def get_setting(key: str, default: Any = None) -> Any:
-    """
-    Get a setting value by key
-    Uses cache if available, otherwise loads from DynamoDB
-    """
     global _cache_initialized
-
-    # Initialize cache if needed
     if not _cache_initialized:
         load_settings()
-
-    # Return from cache or default
     value = _settings_cache.get(key, default)
-
-    # If not in cache and no default provided, check DEFAULT_SETTINGS
     if value is None and key in DEFAULT_SETTINGS:
         value = DEFAULT_SETTINGS[key]
-
     return value
 
 
 def get_all_settings() -> Dict[str, Any]:
-    """
-    Get all settings as a dictionary
-    Uses cache if available, otherwise loads from DynamoDB
-    """
     global _cache_initialized
-
     if not _cache_initialized:
         load_settings()
-
     return _settings_cache.copy()
 
 
 def update_setting(key: str, value: Any) -> None:
-    """
-    Update a single setting in DynamoDB and cache
-    """
     global _settings_cache
-
-    try:
-        # Update in DynamoDB
-        settings_table.put_item(Item={
-            'setting_key': key,
-            'setting_value': value,
-            'setting_type': type(value).__name__
-        })
-
-        # Update cache
-        _settings_cache[key] = value
-
-        print(f"[INFO] Updated setting: {key} = {value}")
-
-    except Exception as e:
-        print(f"[ERROR] Failed to update setting {key}: {str(e)}")
-        raise
+    settings_table.put_item(Item={
+        'setting_key':   key,
+        'setting_value': value,
+        'setting_type':  type(value).__name__,
+    })
+    _settings_cache[key] = value
+    print(f"[INFO] Updated setting: {key} = {value}")
 
 
 def update_settings(settings: Dict[str, Any]) -> None:
-    """
-    Update multiple settings at once
-    """
     for key, value in settings.items():
         update_setting(key, value)
 
 
-def get_role_permissions(role: str):
-    """
-    Return the set of allowed actions for a role, loaded from DynamoDB.
-    Returns None if no entry exists (caller should fall back to code defaults).
-    """
-    value = get_setting(f'permissions:{role}')
-    if value is None:
-        return None
-    return set(value) if isinstance(value, list) else None
-
-
-def set_role_permissions(role: str, actions: set) -> None:
-    """Replace the entire action set for a role."""
-    update_setting(f'permissions:{role}', list(actions))
-
-
-def grant_role_actions(role: str, actions_to_grant: set) -> set:
-    """Add actions to a role. Returns the updated full action set."""
-    current = get_role_permissions(role)
-    if current is None:
-        from config.permissions import ROLE_PERMISSIONS
-        current = set(ROLE_PERMISSIONS.get(role, set()))
-    updated = current | actions_to_grant
-    set_role_permissions(role, updated)
-    return updated
-
-
-def revoke_role_actions(role: str, actions_to_revoke: set) -> set:
-    """Remove actions from a role. Returns the updated full action set."""
-    current = get_role_permissions(role)
-    if current is None:
-        from config.permissions import ROLE_PERMISSIONS
-        current = set(ROLE_PERMISSIONS.get(role, set()))
-    updated = current - actions_to_revoke
-    set_role_permissions(role, updated)
-    return updated
-
-
-def get_all_role_permissions() -> dict:
-    """
-    Return permissions for every non-master role.
-    Each entry indicates whether its source is 'database' or 'default'.
-    """
-    from config.permissions import ROLE_PERMISSIONS, VALID_ROLES
-    result = {}
-    for role in VALID_ROLES:
-        if role == 'master':
-            continue
-        db_perms = get_role_permissions(role)
-        if db_perms is not None:
-            result[role] = {'actions': sorted(db_perms), 'source': 'database'}
-        else:
-            result[role] = {
-                'actions': sorted(ROLE_PERMISSIONS.get(role, set())),
-                'source': 'default',
-            }
-    return result
-
-
 def clear_cache():
-    """
-    Clear the settings cache.
-    Next get_setting() call will reload from DynamoDB.
-    """
+    """Clear the general settings cache."""
     global _settings_cache, _cache_initialized
     _settings_cache = {}
     _cache_initialized = False
     print("[INFO] Settings cache cleared")
 
 
-# Settings database interface
-class AppSettingsDB:
-    """Database interface for app settings"""
+# ═══════════════════════════════════════════════════════════════════════════
+# Resource Permission System
+# ═══════════════════════════════════════════════════════════════════════════
 
+def get_resource_config(resource: str) -> Optional[dict]:
+    """
+    Return the operations dict for a resource from cache or DynamoDB.
+    Returns None if no record exists — caller must treat as denied.
+    Fails closed on DynamoDB errors.
+    """
+    cache_key = f'resource_permission:{resource}'
+
+    if cache_key in _resource_permission_cache:
+        return _resource_permission_cache[cache_key]
+
+    try:
+        response = settings_table.get_item(Key={'setting_key': cache_key})
+        value = response['Item'].get('setting_value') if 'Item' in response else None
+        _resource_permission_cache[cache_key] = value
+        return value
+    except Exception as e:
+        print(f"[ERROR] Failed to get resource config for '{resource}': {e}")
+        return None  # fail closed
+
+
+def set_resource_config(resource: str, operations: dict) -> None:
+    """Write the operations dict for a resource to DynamoDB and update cache."""
+    cache_key = f'resource_permission:{resource}'
+    settings_table.put_item(Item={
+        'setting_key':   cache_key,
+        'setting_value': operations,
+        'setting_type':  'map',
+    })
+    _resource_permission_cache[cache_key] = operations
+
+
+def has_resource_permission(resource: str, operation: str, role: str) -> bool:
+    """
+    Main RBAC check. Secure by default:
+      - No DB record for the resource → denied
+      - Operation not listed in the record → denied
+      - Role not in the allowed list → denied
+      - master role → always allowed (bypasses everything)
+    """
+    if role == 'master':
+        return True
+
+    config = get_resource_config(resource)
+    if config is None:
+        return False
+
+    allowed_roles = config.get(operation)
+    if allowed_roles is None:
+        return False
+
+    return role in allowed_roles
+
+
+def seed_default_permissions() -> dict:
+    """
+    Write DEFAULT_RESOURCE_PERMISSIONS to DynamoDB.
+    Idempotent — overwrites any existing config.
+    Called by POST /settings/permissions/seed (master only).
+    """
+    from config.permissions import DEFAULT_RESOURCE_PERMISSIONS
+    seeded = []
+    for resource, operations in DEFAULT_RESOURCE_PERMISSIONS.items():
+        set_resource_config(resource, operations)
+        seeded.append(resource)
+        print(f"[INFO] Seeded permissions for resource: {resource}")
+    return {'seeded': seeded}
+
+
+def clear_resource_permission_cache() -> None:
+    """Clear the in-memory resource permission cache."""
+    global _resource_permission_cache
+    _resource_permission_cache = {}
+    print("[INFO] Resource permission cache cleared")
+
+
+def get_all_resource_configs() -> dict:
+    """
+    Return all resource permission configs currently stored in DynamoDB.
+    Bypasses cache to always reflect live DB state.
+    """
+    try:
+        response = settings_table.scan(
+            FilterExpression=Attr('setting_key').begins_with('resource_permission:')
+        )
+        items = response.get('Items', [])
+        while 'LastEvaluatedKey' in response:
+            response = settings_table.scan(
+                FilterExpression=Attr('setting_key').begins_with('resource_permission:'),
+                ExclusiveStartKey=response['LastEvaluatedKey'],
+            )
+            items.extend(response.get('Items', []))
+
+        return {
+            item['setting_key'].replace('resource_permission:', ''): item['setting_value']
+            for item in items
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to get all resource configs: {e}")
+        return {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AppSettingsDB — static interface (keeps existing call sites working)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AppSettingsDB:
+
+    # General settings
     @staticmethod
     def get_setting(key: str, default: Any = None) -> Any:
-        """Get a setting value"""
         return get_setting(key, default)
 
     @staticmethod
     def get_all_settings() -> Dict[str, Any]:
-        """Get all settings"""
         return get_all_settings()
 
     @staticmethod
     def update_setting(key: str, value: Any) -> None:
-        """Update a setting"""
         update_setting(key, value)
 
     @staticmethod
     def update_settings(settings: Dict[str, Any]) -> None:
-        """Update multiple settings"""
         update_settings(settings)
 
     @staticmethod
     def initialize_settings() -> None:
-        """Initialize default settings"""
         initialize_settings()
 
     @staticmethod
     def clear_cache() -> None:
-        """Clear settings cache"""
         clear_cache()
 
+    # Resource permissions
     @staticmethod
-    def get_role_permissions(role: str):
-        return get_role_permissions(role)
+    def get_resource_config(resource: str) -> Optional[dict]:
+        return get_resource_config(resource)
 
     @staticmethod
-    def set_role_permissions(role: str, actions: set) -> None:
-        set_role_permissions(role, actions)
+    def set_resource_config(resource: str, operations: dict) -> None:
+        set_resource_config(resource, operations)
 
     @staticmethod
-    def grant_role_actions(role: str, actions_to_grant: set) -> set:
-        return grant_role_actions(role, actions_to_grant)
+    def has_resource_permission(resource: str, operation: str, role: str) -> bool:
+        return has_resource_permission(resource, operation, role)
 
     @staticmethod
-    def revoke_role_actions(role: str, actions_to_revoke: set) -> set:
-        return revoke_role_actions(role, actions_to_revoke)
+    def seed_default_permissions() -> dict:
+        return seed_default_permissions()
 
     @staticmethod
-    def get_all_role_permissions() -> dict:
-        return get_all_role_permissions()
+    def clear_resource_permission_cache() -> None:
+        clear_resource_permission_cache()
+
+    @staticmethod
+    def get_all_resource_configs() -> dict:
+        return get_all_resource_configs()

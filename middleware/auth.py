@@ -8,23 +8,26 @@ from utils import (
     extract_token_from_header,
     unauthorized_response,
     forbidden_response,
-    UserDB
+    UserDB,
 )
-from config import has_permission
-from config.permissions import can_perform
 
 
-def require_auth(required_role: Optional[str] = None, action: Optional[str] = None):
+def require_auth(resource: Optional[str] = None, operation: Optional[str] = None):
     """
     Decorator to require authentication.
 
-    Two ways to specify what permission is needed (pick one):
-      required_role='admin'        — legacy: user must be at least this role level
-      action='list_users'          — preferred: user must have this named action
+    No args:
+        Validates JWT only. Use for self-service endpoints (profile, logout)
+        where any authenticated user is allowed regardless of role.
 
-    Using action= is preferred for new handlers because it decouples
-    the permission check from the role hierarchy and makes the matrix
-    in config/permissions.py the single source of truth.
+    resource + operation:
+        Validates JWT then checks DynamoDB resource permission.
+        master always passes.
+        No DB record for the resource/operation → denied (secure by default).
+
+    Example:
+        @require_auth()                                    # just needs login
+        @require_auth(resource='users', operation='list')  # needs explicit grant
     """
     def decorator(func: Callable):
         @wraps(func)
@@ -54,18 +57,11 @@ def require_auth(required_role: Optional[str] = None, action: Optional[str] = No
 
             user_role = user.get('role', 'customer')
 
-            # Action-based check (preferred)
-            if action is not None:
-                if not can_perform(user_role, action):
+            if resource is not None and operation is not None:
+                from utils.app_settings import has_resource_permission
+                if not has_resource_permission(resource, operation, user_role):
                     return forbidden_response(
-                        f"You do not have permission to perform this action"
-                    )
-
-            # Legacy hierarchy check
-            elif required_role is not None:
-                if not has_permission(user_role, required_role):
-                    return forbidden_response(
-                        f"Insufficient permissions. Required role: {required_role}"
+                        "You do not have permission to perform this action"
                     )
 
             event['user'] = {

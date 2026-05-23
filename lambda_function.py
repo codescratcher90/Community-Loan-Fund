@@ -24,7 +24,15 @@ from handlers import (
     delete_user,
     create_internal_user
 )
-from handlers.settings import get_settings, update_settings, get_permissions, update_role_permissions
+from handlers.settings import (
+    get_settings,
+    update_settings,
+    get_all_permissions,
+    get_resource_permissions,
+    update_resource_permissions,
+    seed_permissions,
+    clear_permissions_cache,
+)
 from utils import error_response
 
 # Load environment variables from .env if running locally
@@ -58,10 +66,13 @@ ROUTES = {
     'GET /users/{id}': get_user,
     'PUT /users/{id}/role': update_user_role,
     'DELETE /users/{id}': delete_user,
-    'GET /settings': get_settings,
-    'PUT /settings': update_settings,
-    'GET /settings/permissions': get_permissions,
-    'PUT /settings/permissions/{role}': update_role_permissions,
+    'GET /settings':                              get_settings,
+    'PUT /settings':                              update_settings,
+    'GET /settings/permissions':                  get_all_permissions,
+    'GET /settings/permissions/{resource}':        get_resource_permissions,
+    'PUT /settings/permissions/{resource}':        update_resource_permissions,
+    'POST /settings/permissions/seed':             seed_permissions,
+    'POST /settings/permissions/cache/clear':      clear_permissions_cache,
 }
 
 

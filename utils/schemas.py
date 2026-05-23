@@ -3,7 +3,7 @@ Schema definitions for all API endpoints.
 Each schema defines required fields, optional fields, types, and constraints.
 """
 
-from utils.schema_validator import Schema, SchemaField, ValidationError
+from utils.schema_validator import Schema, SchemaField
 from utils.validators import validate_email, validate_password, validate_phone, validate_name
 from config.permissions import VALID_ROLES
 
@@ -308,66 +308,20 @@ update_settings_schema = Schema({
 }, strict=True)
 
 
-# ==================== Permissions Schema ====================
-
-def _validate_permissions_payload(data: dict) -> None:
-    has_actions = 'actions' in data
-    has_grant   = 'grant'   in data
-    has_revoke  = 'revoke'  in data
-
-    if not (has_actions or has_grant or has_revoke):
-        raise ValidationError(
-            "Provide 'actions' for a full replace, or 'grant'/'revoke' for partial updates",
-            {'body': "At least one of 'actions', 'grant', or 'revoke' is required"},
-        )
-    if has_actions and (has_grant or has_revoke):
-        raise ValidationError(
-            "'actions' cannot be combined with 'grant' or 'revoke'",
-            {'actions': "Use 'actions' for a full replace OR 'grant'/'revoke' for partial updates"},
-        )
-    for field in ('actions', 'grant', 'revoke'):
-        if field in data:
-            for item in data[field]:
-                if not isinstance(item, str) or not item:
-                    raise ValidationError(
-                        f"All items in '{field}' must be non-empty strings",
-                        {field: 'Expected a list of non-empty strings'},
-                    )
-
-
-# PUT /settings/permissions/{role}
-update_role_permissions_schema = Schema({
-    'actions': SchemaField(
-        field_type=list,
-        required=False,
-        description="Full replacement action set for the role"
-    ),
-    'grant': SchemaField(
-        field_type=list,
-        required=False,
-        description="Actions to add to the role"
-    ),
-    'revoke': SchemaField(
-        field_type=list,
-        required=False,
-        description="Actions to remove from the role"
-    ),
-}, strict=True, cross_field_validators=[_validate_permissions_payload])
-
-
 # ==================== Schema Registry ====================
-# Map route patterns to their schemas for easy lookup
+# Map route patterns to their schemas for easy lookup.
+# PUT /settings/permissions/{resource} has no schema — validation is done
+# inside the handler because the body has dynamic operation keys.
 
 ROUTE_SCHEMAS = {
-    'POST /auth/register': registration_schema,
-    'POST /auth/register-master': master_registration_schema,
-    'POST /auth/verify': verification_schema,
-    'POST /auth/login': login_schema,
-    'POST /auth/refresh': refresh_token_schema,
-    'POST /auth/logout': logout_schema,
-    'PUT /auth/me': update_profile_schema,
-    'POST /users': create_user_schema,
-    'PUT /users/{id}/role': update_role_schema,
-    'PUT /settings': update_settings_schema,
-    'PUT /settings/permissions/{role}': update_role_permissions_schema,
+    'POST /auth/register':          registration_schema,
+    'POST /auth/register-master':   master_registration_schema,
+    'POST /auth/verify':            verification_schema,
+    'POST /auth/login':             login_schema,
+    'POST /auth/refresh':           refresh_token_schema,
+    'POST /auth/logout':            logout_schema,
+    'PUT /auth/me':                 update_profile_schema,
+    'POST /users':                  create_user_schema,
+    'PUT /users/{id}/role':         update_role_schema,
+    'PUT /settings':                update_settings_schema,
 }
