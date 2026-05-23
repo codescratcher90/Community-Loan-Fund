@@ -8,16 +8,16 @@ behaviour, password policy, and account lockout. Changes take effect within
 
 ## Contents
 
-| Endpoint | Description |
-|---|---|
-| [`GET /settings`](#get-settings) | Read all current settings |
-| [`PUT /settings`](#put-settings) | Update one or more settings |
+| # | Endpoint | Description |
+|---|---|---|
+| 1 | [GET /settings](#get-settings) | Read all current settings |
+| 2 | [PUT /settings](#put-settings) | Update one or more settings |
 
 ---
 
 <a id="get-settings"></a>
 
-## `GET /settings`
+## 1. GET /settings
 
 ```http
 GET /settings
@@ -70,7 +70,7 @@ curl -X GET $API_URL/settings \
 
 <a id="put-settings"></a>
 
-## `PUT /settings`
+## 2. PUT /settings
 
 ```http
 PUT /settings
@@ -79,7 +79,7 @@ PUT /settings
 Update one or more application settings. Only the fields you send are changed —
 this is a partial update. Changes propagate to all Lambda containers within 60 s.
 
-**Auth:** Bearer token required. Role: **master only**  
+**Auth:** Bearer token required. Role: master only  
 **Prerequisites:** A valid master access token from `POST /auth/login`
 
 ### Request Body
@@ -152,4 +152,7 @@ curl -X PUT $API_URL/settings \
 
 ---
 
-> ← Previous: [Users](users.md) &nbsp;|&nbsp; Next → [Permissions](permissions.md)
+## Related
+
+- [Authentication](auth.md) — `require_otp_on_registration` directly affects registration and login flow
+- [Permissions](permissions.md) — RBAC for who can read and update settings

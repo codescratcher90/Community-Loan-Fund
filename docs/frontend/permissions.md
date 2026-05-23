@@ -8,19 +8,19 @@ If no record exists in DynamoDB for a pair, access is **denied by default**
 
 ## Contents
 
-| Endpoint | Description |
-|---|---|
-| [`GET /permissions`](#get-permissions) | List configs for all resources |
-| [`GET /permissions/{resource}`](#get-permissions-resource) | Get config for one resource |
-| [`PUT /permissions/{resource}`](#put-permissions-resource) | Replace a resource's config |
-| [`POST /permissions/seed`](#post-permissions-seed) | Write code defaults to DynamoDB |
-| [Role Hierarchy](#role-hierarchy) | All roles and their privilege levels |
+| # | Endpoint | Description |
+|---|---|---|
+| 1 | [GET /permissions](#get-permissions) | List configs for all resources |
+| 2 | [GET /permissions/{resource}](#get-permissions-resource) | Get config for one resource |
+| 3 | [PUT /permissions/{resource}](#put-permissions-resource) | Replace a resource's config |
+| 4 | [POST /permissions/seed](#post-permissions-seed) | Write code defaults to DynamoDB |
+| — | [Role Hierarchy](#role-hierarchy) | All roles and their privilege levels |
 
 ---
 
 <a id="get-permissions"></a>
 
-## `GET /permissions`
+## 1. GET /permissions
 
 ```http
 GET /permissions
@@ -29,7 +29,7 @@ GET /permissions
 List the stored permission config for every resource, plus the compile-time defaults.
 
 **Auth:** Bearer token required. Role: master (or owner if seeded with read access)  
-**Prerequisites:** A valid access token from `POST /auth/login`. Call `POST /permissions/seed` first if the system is freshly deployed.
+**Prerequisites:** A valid access token from `POST /auth/login`. Call endpoint 4 first if the system is freshly deployed.
 
 ### Response `200`
 
@@ -62,9 +62,8 @@ List the stored permission config for every resource, plus the compile-time defa
 ```
 
 `resources` is the live DynamoDB state. `default_config` is the compile-time
-defaults (what `POST /permissions/seed` would write). If a key exists in
-`default_config` but not in `resources`, that resource has not been seeded yet
-and is master-only.
+defaults (what endpoint 4 would write). If a key exists in `default_config`
+but not in `resources`, that resource has not been seeded yet and is master-only.
 
 An empty list (`[]`) for an operation means master-only access.
 
@@ -79,7 +78,7 @@ curl -X GET $API_URL/permissions \
 
 <a id="get-permissions-resource"></a>
 
-## `GET /permissions/{resource}`
+## 2. GET /permissions/{resource}
 
 ```http
 GET /permissions/{resource}
@@ -88,7 +87,7 @@ GET /permissions/{resource}
 Get the stored permission config for a single resource.
 
 **Auth:** Bearer token required. Role: master (or owner if seeded with read access)  
-**Prerequisites:** A valid access token from `POST /auth/login`. The resource must have been seeded — if not, call `POST /permissions/seed` first.
+**Prerequisites:** A valid access token from `POST /auth/login`. The resource must have been seeded — if not, call endpoint 4 first.
 
 ### Path Parameters
 
@@ -124,7 +123,7 @@ Get the stored permission config for a single resource.
 
 | Status | When |
 |---|---|
-| `404` | No config found for this resource — call `POST /permissions/seed` first |
+| `404` | No config found for this resource — call endpoint 4 first |
 
 ### Example
 
@@ -137,7 +136,7 @@ curl -X GET $API_URL/permissions/users \
 
 <a id="put-permissions-resource"></a>
 
-## `PUT /permissions/{resource}`
+## 3. PUT /permissions/{resource}
 
 ```http
 PUT /permissions/{resource}
@@ -148,7 +147,7 @@ is denied. `master` always has access regardless and cannot be added to the list
 Changes take effect immediately on the current Lambda container and within 60 s
 on all others.
 
-**Auth:** Bearer token required. Role: **master only**  
+**Auth:** Bearer token required. Role: master only  
 **Prerequisites:** A valid master access token from `POST /auth/login`
 
 ### Path Parameters
@@ -219,7 +218,7 @@ curl -X PUT $API_URL/permissions/users \
 
 <a id="post-permissions-seed"></a>
 
-## `POST /permissions/seed`
+## 4. POST /permissions/seed
 
 ```http
 POST /permissions/seed
@@ -228,10 +227,10 @@ POST /permissions/seed
 Write the code-default permissions to DynamoDB. Safe to run multiple times
 (idempotent — overwrites any existing config with the code defaults).
 
-Run this after every deployment that adds a new endpoint, to initialise that
-endpoint's default access rules. Until seeded, any new endpoint is master-only.
+Run this after every deployment that adds a new endpoint. Until seeded, any
+new endpoint is master-only.
 
-**Auth:** Bearer token required. Role: **master only**  
+**Auth:** Bearer token required. Role: master only  
 **Prerequisites:** A valid master access token from `POST /auth/login`. Run once after first deployment, then again after each deployment that adds new endpoints.
 
 ### Response `200`
@@ -279,4 +278,7 @@ permission checks.
 
 ---
 
-> ← Previous: [Settings](settings.md)
+## Related
+
+- [Users](users.md) — role hierarchy applied to all user operations
+- [Settings](settings.md) — configure alongside permissions after each deployment

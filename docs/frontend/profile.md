@@ -7,16 +7,16 @@ changes go through an OTP verification step rather than updating immediately.
 
 ## Contents
 
-| Endpoint | Description |
-|---|---|
-| [`GET /auth/me`](#get-auth-me) | Get the current user's full profile |
-| [`PUT /auth/me`](#put-auth-me) | Update name, password, email, or phone |
+| # | Endpoint | Description |
+|---|---|---|
+| 1 | [GET /auth/me](#get-auth-me) | Get the current user's full profile |
+| 2 | [PUT /auth/me](#put-auth-me) | Update name, password, email, or phone |
 
 ---
 
 <a id="get-auth-me"></a>
 
-## `GET /auth/me`
+## 1. GET /auth/me
 
 ```http
 GET /auth/me
@@ -64,7 +64,7 @@ curl -X GET $API_URL/auth/me \
 
 <a id="put-auth-me"></a>
 
-## `PUT /auth/me`
+## 2. PUT /auth/me
 
 ```http
 PUT /auth/me
@@ -206,4 +206,7 @@ curl -X POST $API_URL/auth/verify \
 
 ---
 
-> ← Previous: [Authentication](auth.md) &nbsp;|&nbsp; Next → [Users](users.md)
+## Related
+
+- [Authentication](auth.md) — where access tokens come from (login, refresh)
+- [Users](users.md) — admin-level user management

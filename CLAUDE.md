@@ -235,10 +235,10 @@ or creating a doc file in that directory.
 
 **File structure:**
 1. `# Title` + 2–3 line description
-2. `## Contents` table with `[Endpoint description](#anchor-id)` links for every endpoint
+2. `## Contents` table with numbered rows and plain `[N. Endpoint description](#anchor-id)` links (no backtick wrapping on links)
 3. One section per endpoint, with:
    - `<a id="method-path-segments"></a>` anchor immediately before the heading
-   - `## \`METHOD /path\`` heading (backtick-wrapped for monospace rendering)
+   - `## N. METHOD /path` heading — number matches the Contents table row, no backtick wrapping
    - ` ```http\nMETHOD /path\n``` ` fenced code block (copyable endpoint line)
    - One-line description
    - `**Auth:**` and `**Prerequisites:**` lines (both required, write "None" if not applicable)
@@ -246,15 +246,13 @@ or creating a doc file in that directory.
    - `### Response \`NNN\`` with a JSON example
    - `### Errors` table with backtick-wrapped status codes
    - `### Example` or `### Examples` with `bash` fenced curl commands
-4. Footer navigation line: `> ← Previous: [Name](file.md) &nbsp;|&nbsp; Next → [Name](file.md)`
-   - First file: `> **Next →** [Name](file.md)` only
-   - Last file: `> ← Previous: [Name](file.md)` only
-
-**Reading order** (for navigation links):
-`overview.md` → `auth.md` → `profile.md` → `users.md` → `settings.md` → `permissions.md`
+4. `## Related` section at the bottom — list of other `docs/frontend/` files relevant to this one, with a short description of the relationship. No sequential prev/next links.
 
 **Anchor ID format:** lowercase method + path segments with slashes and braces removed,
 joined by hyphens. Examples: `post-auth-register`, `get-users-id`, `put-users-id-role`.
+
+**No backtick wrapping on endpoint method+path** in headings or TOC links. Reserve
+backticks for inline values like field names, status codes, and `otp_type` strings.
 
 ---
 
