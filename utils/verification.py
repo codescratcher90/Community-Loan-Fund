@@ -1,48 +1,64 @@
 """
 Verification Code Utilities
 """
-import random
+import os
+import secrets
+import boto3
+from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 from config import config
 
+
 def generate_verification_code(length: int = 6) -> str:
-    """
-    Generate a random numeric verification code
-    """
-    return ''.join([str(random.randint(0, 9)) for _ in range(length)])
+    return ''.join([str(secrets.randbelow(10)) for _ in range(length)])
 
 
 def send_email_verification(email: str, code: str) -> bool:
+    """Send OTP to email via AWS SES."""
+    from_email = os.getenv('FROM_EMAIL')
+    if not from_email:
+        print("[ERROR] FROM_EMAIL environment variable not set")
+        return False
+
+    expiry_minutes = config.VERIFICATION_CODE_EXPIRY // 60
+
+    html = f"""
+    <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px">
+      <h2 style="color:#333">Verification Code</h2>
+      <p style="color:#555">Use the code below to verify your account:</p>
+      <div style="font-size:36px;font-weight:bold;letter-spacing:8px;
+                  padding:16px 24px;background:#f4f4f4;border-radius:8px;
+                  text-align:center;color:#111">{code}</div>
+      <p style="color:#888;font-size:13px;margin-top:24px">
+        Expires in <strong>{expiry_minutes} minutes</strong>.
+        If you did not request this, please ignore this email.
+      </p>
+    </div>
     """
-    Send email verification code
-    For now, just log to console (testing mode)
-    TODO: Implement AWS SES integration
-    """
-    print(f"\n{'='*60}")
-    print(f"📧 EMAIL VERIFICATION CODE")
-    print(f"{'='*60}")
-    print(f"To: {email}")
-    print(f"Code: {code}")
-    print(f"Expires: {config.VERIFICATION_CODE_EXPIRY // 60} minutes")
-    print(f"{'='*60}\n")
-    
-    return True
+
+    try:
+        boto3.client('ses').send_email(
+            Source=from_email,
+            Destination={'ToAddresses': [email]},
+            Message={
+                'Subject': {'Data': 'Your verification code'},
+                'Body': {
+                    'Text': {'Data': f'Your verification code is: {code}\nExpires in {expiry_minutes} minutes.'},
+                    'Html': {'Data': html},
+                },
+            },
+        )
+        print(f"[INFO] Verification email sent to {email}")
+        return True
+    except ClientError as e:
+        print(f"[ERROR] SES send failed for {email}: {e.response['Error']['Message']}")
+        return False
 
 
 def send_sms_verification(phone: str, code: str) -> bool:
-    """
-    Send SMS verification code
-    For now, just log to console (testing mode)
-    TODO: Implement AWS SNS integration
-    """
-    print(f"\n{'='*60}")
-    print(f"📱 SMS VERIFICATION CODE")
-    print(f"{'='*60}")
-    print(f"To: {phone}")
-    print(f"Code: {code}")
-    print(f"Expires: {config.VERIFICATION_CODE_EXPIRY // 60} minutes")
-    print(f"{'='*60}\n")
-    
+    """Send OTP via AWS SNS — not yet implemented."""
+    # TODO: implement SNS
+    print(f"[STUB] SMS OTP for {phone}: {code}")
     return True
 
 

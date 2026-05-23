@@ -156,6 +156,7 @@ JWT_SECRET=<generate with: openssl rand -base64 32>
 REFRESH_TOKEN_SECRET=<generate with: openssl rand -base64 32>
 MASTER_SECRET_KEY=<generate with: openssl rand -base64 32>
 AWS_REGION=eu-north-1
+FROM_EMAIL=noreply@yourdomain.com
 ```
 
 Do NOT commit `.env`. It is gitignored.
@@ -169,6 +170,7 @@ Do NOT commit `.env`. It is gitignored.
 |------|---------|
 | `APP_NAME` | `basic-auth` |
 | `AWS_REGION` | `eu-north-1` |
+| `FROM_EMAIL` | `noreply@yourdomain.com` |
 
 **Secrets** (Settings → Actions → Secrets) — masked in logs:
 | Name | Used by |
