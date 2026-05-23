@@ -62,6 +62,7 @@ Basic-Auth/
 │
 ├── config/
 │   ├── settings.py            # Config class — reads env vars
+│   ├── otp.py                 # OTPType constants, EMAIL/PHONE_OTP_TYPES, cooldown
 │   └── permissions.py        # Role hierarchy + DEFAULT_RESOURCE_PERMISSIONS
 │
 ├── handlers/                  # One file per feature area
@@ -69,10 +70,10 @@ Basic-Auth/
 │   ├── login.py               # POST /auth/login
 │   ├── logout.py              # POST /auth/logout
 │   ├── refresh_token.py       # POST /auth/refresh
-│   ├── verify.py              # POST /auth/verify
+│   ├── verify.py              # POST /auth/verify, POST /auth/resend-otp
 │   ├── profile.py             # GET/PUT /auth/me
 │   ├── users.py               # GET/POST/PUT/DELETE /users and /users/{id}
-│   └── settings.py            # GET/PUT /settings, GET/PUT /settings/permissions
+│   └── settings.py            # GET/PUT /settings
 │
 ├── middleware/
 │   ├── auth.py                # @require_auth decorator (JWT validation + RBAC)
@@ -156,7 +157,7 @@ is absent from the record, access is **denied** for everyone except `master`.
 ### Default Permission Matrix (seed values)
 
 Stored in `config/permissions.py → DEFAULT_RESOURCE_PERMISSIONS`. Written to DynamoDB
-by calling `POST /settings/permissions/seed` (master only, idempotent).
+by calling `POST /permissions/seed` (master only, idempotent).
 
 | Resource | Operation | owner | admin | manager | supervisor | staff | customer |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -179,16 +180,16 @@ The master can change which roles access any resource/operation without redeploy
 
 ```bash
 # View all resource permission configs
-curl -X GET $API_URL/settings/permissions \
+curl -X GET $API_URL/permissions \
   -H "Authorization: Bearer $MASTER_TOKEN"
 
 # View permissions for one resource
-curl -X GET $API_URL/settings/permissions/users \
+curl -X GET $API_URL/permissions/users \
   -H "Authorization: Bearer $MASTER_TOKEN"
 
 # Full replace of a resource's operations
 # coordinator and staff can now list and read users; delete is still master-only
-curl -X PUT $API_URL/settings/permissions/users \
+curl -X PUT $API_URL/permissions/users \
   -H "Authorization: Bearer $MASTER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -198,15 +199,10 @@ curl -X PUT $API_URL/settings/permissions/users \
     "update_role": ["owner", "admin"],
     "delete":      []
   }'
-
-# Clear in-memory cache on the current Lambda container after edits
-curl -X POST $API_URL/settings/permissions/cache/clear \
-  -H "Authorization: Bearer $MASTER_TOKEN"
 ```
 
 Permissions are stored in `app_settings` under keys like `resource_permission:users`.
-Changes take effect immediately for new requests. Existing Lambda containers hold an
-in-memory cache; call `cache/clear` to force an immediate re-read.
+Changes via the API take effect immediately (write-through cache). Manual DynamoDB edits propagate within 60 seconds (TTL-based cache).
 
 ### Adding a New Endpoint (for developers)
 
@@ -215,7 +211,7 @@ in-memory cache; call `cache/clear` to force an immediate re-read.
 3. Wire the route in `lambda_function.py → ROUTES`
 4. Add the API Gateway event + swagger path in `template.yaml`
 5. Add the new resource/operation to `DEFAULT_RESOURCE_PERMISSIONS` in `config/permissions.py`
-6. After deploying, call `POST /settings/permissions/seed` to write the new defaults to DynamoDB
+6. After deploying, call `POST /permissions/seed` to write the new defaults to DynamoDB
 
 See `CLAUDE.md` for the full checklist.
 
@@ -259,7 +255,7 @@ All tables are named `{APP_NAME}-{ENVIRONMENT}-{table}` (e.g. `community-fund-pr
 
 | Table | Primary Key | GSI | TTL |
 |---|---|---|---|
-| users | `user_id` (HASH) | `email-index` | No |
+| users | `user_id` (HASH) | `email-index, phone-index (sparse)` | No |
 | refresh_tokens | `token` (HASH) | `user_id-index` | Yes (`expires_at`) |
 | verification_codes | `user_id` (HASH) + `code_type` (RANGE) | — | No (bug — see next-steps §1.5) |
 | login_attempts | `ip_address` (HASH) + `timestamp` (RANGE) | — | No (bug — see next-steps §1.6) |
@@ -282,6 +278,7 @@ JWT_SECRET=<openssl rand -base64 32>
 REFRESH_TOKEN_SECRET=<openssl rand -base64 32>
 MASTER_SECRET_KEY=<openssl rand -base64 32>
 AWS_REGION=eu-north-1
+FROM_EMAIL=noreply@yourdomain.com
 ```
 
 Do **not** commit `.env` — it is in `.gitignore`.
