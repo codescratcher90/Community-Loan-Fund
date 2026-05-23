@@ -1,5 +1,5 @@
 from .register import register, register_master
-from .verify import verify
+from .verify import verify, resend_otp
 from .login import login
 from .refresh_token import refresh
 from .logout import logout
@@ -10,6 +10,7 @@ __all__ = [
     'register',
     'register_master',
     'verify',
+    'resend_otp',
     'login',
     'refresh',
     'logout',

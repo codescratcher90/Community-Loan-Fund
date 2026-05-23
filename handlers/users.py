@@ -335,15 +335,18 @@ def create_internal_user(event, context):
             'password': hashed_password,
             'first_name': first_name,
             'last_name': last_name,
-            'phone': phone,
             'role': role,
             'tenant_id': tenant_id,
-            'is_verified': True,  # Internal users are auto-verified
+            'email_verified': True,   # internal users are pre-verified
+            'phone_verified': bool(phone),
+            'is_verified': True,
             'is_locked': False,
             'failed_login_attempts': 0,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }
+        if phone:
+            user_data['phone'] = phone
 
         UserDB.create_user(user_data)
 

@@ -5,128 +5,135 @@ import uuid
 import json
 from datetime import datetime
 from config import config, VALID_ROLES
+from config.otp import OTPType, EMAIL_OTP_TYPES, PHONE_OTP_TYPES
 from utils import (
     UserDB,
     VerificationCodeDB,
     hash_password,
-    validate_registration_data,
-    validate_role,
+    create_otp_record,
+    send_email_otp,
+    send_sms_otp,
+    mask_email,
+    mask_phone,
+    normalize_phone,
     success_response,
     error_response,
-    validation_error_response,
-    create_verification_record,
-    send_email_verification,
-    send_sms_verification,
     get_setting
 )
 from utils.schema_validator import validate_request_body
 from utils.schemas import registration_schema, master_registration_schema
+from utils.validators import validate_email, validate_phone
 from middleware import register_rate_limit
+
+
+def _send_registration_otp(user_id: str, otp_type: str, contact: str) -> bool:
+    """Create and send a registration OTP. Returns True on success."""
+    record = create_otp_record(user_id, otp_type, contact)
+    VerificationCodeDB.create_code(record)
+    if otp_type in EMAIL_OTP_TYPES:
+        return send_email_otp(contact, record['code'], otp_type)
+    return send_sms_otp(contact, record['code'], otp_type)
+
 
 @register_rate_limit()
 @validate_request_body(registration_schema)
 def register(event, context):
     """
     POST /auth/register
-    Register a new user
+    Register a new user with email, phone, or both.
     """
     try:
-        # Check if public signup is allowed
         allow_public_signup = get_setting('allow_public_signup', True)
         if not allow_public_signup:
             return error_response("Public signup is currently disabled", status_code=403)
 
         body = json.loads(event.get('body', '{}'))
 
-        # Validate input
-        is_valid, errors = validate_registration_data(body)
-        if not is_valid:
-            return validation_error_response("Validation failed", errors)
-
-
-        email = body['email'].lower().strip()
+        email = body.get('email', '').lower().strip() or None
+        phone = normalize_phone(body.get('phone', '').strip()) if body.get('phone') else None
         password = body['password']
         first_name = body['first_name'].strip()
         last_name = body['last_name'].strip()
-        phone = body.get('phone', '').strip()
-        print(f"[LOG] User email: {email}")
-        # Check if user already exists
-        existing_user = UserDB.get_user_by_email(email)
-        if existing_user:
-            return error_response("Email already registered", status_code=409)
-        
-        # Get settings
-        default_public_role = get_setting('default_public_role', 'customer')
-        email_verification_required = get_setting('email_verification_required', True)
-        require_otp_on_registration = get_setting('require_otp_on_registration', True)
 
-        # Create user
+        # Uniqueness checks
+        if email:
+            if UserDB.get_user_by_email(email):
+                return error_response("Email already registered", status_code=409)
+        if phone:
+            if UserDB.get_user_by_phone(phone):
+                return error_response("Phone number already registered", status_code=409)
+
+        require_otp = get_setting('require_otp_on_registration', True)
+        default_role = get_setting('default_public_role', 'customer')
+
         user_id = str(uuid.uuid4())
-        hashed_password = hash_password(password)
+        now = datetime.utcnow().isoformat()
 
         user_data = {
-            'user_id': user_id,
-            'email': email,
-            'password': hashed_password,
-            'first_name': first_name,
-            'last_name': last_name,
-            'phone': phone,
-            'role': default_public_role,  # Default role from settings
-            'tenant_id': None,  # Customers are global users, not scoped to a tenant
-            'is_verified': not email_verification_required,  # Skip verification if not required
-            'is_locked': False,
+            'user_id':              user_id,
+            'first_name':           first_name,
+            'last_name':            last_name,
+            'password':             hash_password(password),
+            'role':                 default_role,
+            'tenant_id':            None,
+            'email_verified':       False,
+            'phone_verified':       False,
+            'is_verified':          not require_otp,
+            'is_locked':            False,
             'failed_login_attempts': 0,
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat()
+            'created_at':           now,
+            'updated_at':           now,
         }
+        if email:
+            user_data['email'] = email
+        if phone:
+            user_data['phone'] = phone
 
         UserDB.create_user(user_data)
 
-        # Generate and send verification codes (if OTP is required)
-        verification_message = ""
-        if require_otp_on_registration and email_verification_required:
-            # Email verification
-            email_code_data = create_verification_record(user_id, 'email')
-            VerificationCodeDB.create_code(email_code_data)
+        # Send OTPs if required
+        verification_sent = []
+        if require_otp:
+            if email:
+                if not _send_registration_otp(user_id, OTPType.REGISTRATION_EMAIL, email):
+                    UserDB.delete_user(user_id)
+                    return error_response(
+                        "Registration failed: could not send verification email. "
+                        "Please check your email address and try again.",
+                        status_code=500,
+                    )
+                verification_sent.append(f"email ({mask_email(email)})")
 
-            if not send_email_verification(email, email_code_data['code']):
-                # Roll back — delete the user so they can retry registration
-                UserDB.delete_user(user_id)
-                return error_response(
-                    "Registration failed: could not send verification email. "
-                    "Please check your email address and try again.",
-                    status_code=500
-                )
-
-            verification_message = "Please verify your email"
-
-            # SMS verification (if phone provided)
             if phone:
-                sms_code_data = create_verification_record(user_id, 'sms')
-                VerificationCodeDB.create_code(sms_code_data)
-                send_sms_verification(phone, sms_code_data['code'])
-                verification_message = "Please verify your email and phone"
+                if not _send_registration_otp(user_id, OTPType.REGISTRATION_PHONE, phone):
+                    UserDB.delete_user(user_id)
+                    return error_response(
+                        "Registration failed: could not send verification SMS. "
+                        "Please check your phone number and try again.",
+                        status_code=500,
+                    )
+                verification_sent.append(f"SMS ({mask_phone(phone)})")
+
+        if verification_sent:
+            message = f"Registration successful. Verification code sent via {' and '.join(verification_sent)}."
         else:
-            verification_message = "Registration complete"
-        
-        # Return user data (without password)
-        user_response = {
-            'user_id': user_id,
-            'email': email,
-            'first_name': first_name,
-            'last_name': last_name,
-            'phone': phone,
-            'role': default_public_role,
-            'is_verified': user_data['is_verified'],
-            'created_at': user_data['created_at']
-        }
+            message = "Registration successful."
 
         return success_response(
-            data=user_response,
-            message=f"Registration successful. {verification_message}",
-            status_code=201
+            data={
+                'user_id':      user_id,
+                'first_name':   first_name,
+                'last_name':    last_name,
+                'email':        mask_email(email) if email else None,
+                'phone':        mask_phone(phone) if phone else None,
+                'role':         default_role,
+                'is_verified':  user_data['is_verified'],
+                'created_at':   now,
+            },
+            message=message,
+            status_code=201,
         )
-        
+
     except json.JSONDecodeError:
         return error_response("Invalid JSON in request body")
     except Exception as e:
@@ -139,86 +146,68 @@ def register(event, context):
 def register_master(event, context):
     """
     POST /auth/register-master
-    Register a master user (requires secret key)
+    Register a master user (requires secret key).
     """
-    print("RAW EVENT BODY:", event)
-
     try:
         body = json.loads(event.get('body', '{}'))
-        print(f"[LOG] Master registration: {body}")
 
-        # Check if MASTER_SECRET_KEY is configured
         if not config.MASTER_SECRET_KEY:
-            print("[ERROR] MASTER_SECRET_KEY environment variable is not set")
             return error_response("Master registration is not configured", status_code=500)
 
-        # Verify master secret key - strip whitespace from both sides
         secret_key = body.get('secret_key', '').strip()
-        expected_key = config.MASTER_SECRET_KEY.strip()
-
-        if not secret_key or secret_key != expected_key:
-            print(f"[ERROR] Secret key mismatch")
-            print(f"  Expected length: {len(expected_key)}")
-            print(f"  Received length: {len(secret_key)}")
-            print(f"  Match: {secret_key == expected_key}")
+        if not secret_key or secret_key != config.MASTER_SECRET_KEY.strip():
             return error_response("Invalid master secret key", status_code=403)
-            
-        # Validate input
-        is_valid, errors = validate_registration_data(body)
-        if not is_valid:
-            return validation_error_response("Validation failed", errors)
-        
+
         email = body['email'].lower().strip()
         password = body['password']
         first_name = body['first_name'].strip()
         last_name = body['last_name'].strip()
-        phone = body.get('phone', '').strip()
-        
-        # Check if user already exists
-        existing_user = UserDB.get_user_by_email(email)
-        if existing_user:
+        phone = normalize_phone(body['phone'].strip()) if body.get('phone') else None
+
+        if UserDB.get_user_by_email(email):
             return error_response("Email already registered", status_code=409)
-        
-        # Create master user
+        if phone and UserDB.get_user_by_phone(phone):
+            return error_response("Phone number already registered", status_code=409)
+
         user_id = str(uuid.uuid4())
-        hashed_password = hash_password(password)
-        
+        now = datetime.utcnow().isoformat()
+
         user_data = {
-            'user_id': user_id,
-            'email': email,
-            'password': hashed_password,
-            'first_name': first_name,
-            'last_name': last_name,
-            'phone': phone,
-            'role': 'master',  # Master role
-            'tenant_id': None,  # Master is a system role, not scoped to any tenant
-            'is_verified': True,  # Auto-verify master users
-            'is_locked': False,
+            'user_id':              user_id,
+            'email':                email,
+            'password':             hash_password(password),
+            'first_name':           first_name,
+            'last_name':            last_name,
+            'role':                 'master',
+            'tenant_id':            None,
+            'email_verified':       True,
+            'phone_verified':       bool(phone),
+            'is_verified':          True,
+            'is_locked':            False,
             'failed_login_attempts': 0,
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat()
+            'created_at':           now,
+            'updated_at':           now,
         }
-        
+        if phone:
+            user_data['phone'] = phone
+
         UserDB.create_user(user_data)
-        
-        # Return user data (without password)
-        user_response = {
-            'user_id': user_id,
-            'email': email,
-            'first_name': first_name,
-            'last_name': last_name,
-            'phone': phone,
-            'role': 'master',
-            'is_verified': True,
-            'created_at': user_data['created_at']
-        }
-        
+
         return success_response(
-            data=user_response,
+            data={
+                'user_id':    user_id,
+                'email':      email,
+                'first_name': first_name,
+                'last_name':  last_name,
+                'phone':      phone,
+                'role':       'master',
+                'is_verified': True,
+                'created_at': now,
+            },
             message="Master user created successfully",
-            status_code=201
+            status_code=201,
         )
-        
+
     except json.JSONDecodeError:
         return error_response("Invalid JSON in request body")
     except Exception as e:
