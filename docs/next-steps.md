@@ -54,25 +54,7 @@ This currently throws `ResourceNotFoundException` on every IP-based rate limit c
 
 ---
 
-### 1.3 Use cryptographically secure OTP generation
-
-**File:** `utils/verification.py:12`
-
-`random.randint()` is not cryptographically secure. A 6-digit code generated this way
-is predictable given enough samples.
-
-```python
-# Before
-return ''.join([str(random.randint(0, 9)) for _ in range(length)])
-
-# After
-import secrets
-return ''.join([str(secrets.randbelow(10)) for _ in range(length)])
-```
-
----
-
-### 1.4 Replace `datetime.utcnow()` throughout
+### 1.3 Replace `datetime.utcnow()` throughout
 
 **Files:** `utils/database.py`, `handlers/register.py`, `handlers/login.py`,
 `utils/verification.py`, `utils/app_settings.py`
@@ -83,7 +65,7 @@ to each file.
 
 ---
 
-### 1.5 Add TTL to VerificationCodesTable
+### 1.4 Add TTL to VerificationCodesTable
 
 **File:** `template.yaml` — `VerificationCodesTable` resource
 
@@ -100,7 +82,7 @@ VerificationCodesTable:
 
 ---
 
-### 1.6 Add TTL to LoginAttemptsTable
+### 1.5 Add TTL to LoginAttemptsTable
 
 **File:** `template.yaml` — `LoginAttemptsTable` resource
 
@@ -114,7 +96,7 @@ The code will need to store an `expires_at` (or `ttl`) epoch attribute when reco
 
 ### 2.1 Use constant-time comparison for master key
 
-**File:** `handlers/register.py:150`
+**File:** `handlers/register.py`
 
 String equality (`!=`) is not constant-time and leaks information via timing attacks.
 
@@ -131,7 +113,7 @@ if not secret_key or not secrets.compare_digest(secret_key, expected_key):
 
 ### 2.2 Raise minimum password length
 
-**File:** `config/settings.py:46`
+**File:** `config/settings.py`
 
 ```python
 # Before
@@ -147,7 +129,7 @@ Consider also enforcing complexity (uppercase, number, symbol) via the validator
 
 ### 2.3 Make CORS origin configurable
 
-**Files:** `lambda_function.py:120,165,178,204`, `template.yaml:201`
+**Files:** `lambda_function.py`, `template.yaml`
 
 `Access-Control-Allow-Origin: *` allows any domain. For production, restrict to your
 actual frontend domain. Add an `AllowedOrigin` SAM parameter and thread it through
@@ -157,7 +139,7 @@ as an environment variable.
 
 ### 2.4 Rate limiter should fail closed
 
-**File:** `utils/database.py:339-342`
+**File:** `utils/database.py`
 
 On any DynamoDB error, the rate limiter silently allows all requests:
 ```python
@@ -172,7 +154,7 @@ At minimum, add a CloudWatch metric/alarm when this path is hit.
 
 ### 2.5 Fix race condition on user registration
 
-**File:** `handlers/register.py:54-56`, `utils/database.py:25-28`
+**Files:** `handlers/register.py`, `utils/database.py`
 
 Two simultaneous registrations with the same email both pass the `get_user_by_email`
 check and both successfully create a user (duplicate emails). Fix with a DynamoDB
@@ -191,37 +173,47 @@ This requires email to be queryable as a key — alternatively use the GSI and c
 
 ## Phase 3 — Complete Unfinished Features
 
-### 3.1 Implement email verification via SES
+### 3.1 Implement SMS verification via SNS
 
-**File:** `utils/verification.py:15-29`
+**File:** `utils/verification.py` — `send_sms_otp()`
 
-`send_email_verification()` only logs to console. Implement using AWS SES:
-- Add SES send permission to Lambda IAM policy in `template.yaml`
-- Add `EMAIL_FROM` to SAM parameters and environment variables
-- Use `boto3` SES client to send a formatted email with the OTP code
+`send_sms_otp()` logs to CloudWatch but does not call SNS. The function signature,
+OTP record creation, and resend logic are all in place — only the delivery step is
+missing:
+
+- Add SNS publish permission to Lambda IAM policy in `template.yaml`
+- Replace the stub body with a `boto3` SNS client `publish()` call
+
+Consider that SNS SMS has per-message costs.
 
 ---
 
-### 3.2 Implement SMS verification via SNS
+### 3.2 Implement POST /auth/reset-password
 
-**File:** `utils/verification.py:32-46`
+The `forgot_password` OTP type is fully wired: `POST /auth/verify` with
+`otp_type: "forgot_password"` sets `password_reset_verified = true` with a
+10-minute expiry (`password_reset_expires_at`). What's missing is the endpoint
+that consumes this flag:
 
-`send_sms_verification()` only logs to console. Implement using AWS SNS:
-- Add SNS publish permission to Lambda IAM policy in `template.yaml`
-- Use `boto3` SNS client with `publish()` to send SMS
+```
+POST /auth/reset-password
+  body: { user_id, new_password }
+  checks: password_reset_verified == true and password_reset_expires_at not expired
+  action: hash + store new password, clear the reset flag
+```
 
-Consider making SMS optional (only if phone is provided and verified) since SNS SMS
-has per-message costs.
+Until this is added, the forgot-password flow is incomplete and `password_reset_verified`
+accumulates stale flags in the users table.
 
 ---
 
 ### 3.3 Add pagination to list endpoints
 
-**File:** `utils/database.py:69-103`
+**File:** `utils/database.py`
 
-`list_users`, `list_customers`, `list_users_by_tenant` use DynamoDB `scan` with `Limit`.
-DynamoDB's `Limit` caps items *scanned*, not *returned* — with filter expressions you
-often get fewer items than requested with no signal that more exist.
+`list_users` uses DynamoDB `scan` with `Limit`. DynamoDB's `Limit` caps items
+*scanned*, not *returned* — with filter expressions you often get fewer items than
+requested with no signal that more exist.
 
 Fix: propagate `LastEvaluatedKey` as a pagination cursor in the API response, and
 accept an `exclusive_start_key` query parameter to fetch the next page.
@@ -230,11 +222,10 @@ accept an `exclusive_start_key` query parameter to fetch the next page.
 
 ### 3.4 Replace scan-based list operations with GSI queries
 
-**File:** `utils/database.py:69-103`
+**File:** `utils/database.py`
 
-For multi-tenant filtering (`list_users_by_tenant`), a full table scan is expensive at
-scale. Add a GSI on `tenant_id` to the `UsersTable` in `template.yaml` and use `query`
-instead of `scan`.
+For multi-tenant filtering, a full table scan is expensive at scale. Add a GSI on
+`tenant_id` to `UsersTable` in `template.yaml` and use `query` instead of `scan`.
 
 ---
 
@@ -247,9 +238,10 @@ instead of `scan`.
 Using `pytest`. Priority test targets:
 - `utils/password.py` — hash and verify
 - `utils/jwt_utils.py` — token creation, expiry, invalid signature
+- `utils/verification.py` — OTP generation, masking, cooldown logic
 - `utils/database.py` — mock DynamoDB with `moto`, test all DB classes
 - `handlers/register.py` — valid registration, duplicate email, bad secret key
-- `handlers/login.py` — correct password, wrong password, locked account, auto-unlock
+- `handlers/login.py` — correct password, wrong password, locked account, unverified account
 
 ### 4.2 Integration tests for auth flows
 
@@ -257,6 +249,7 @@ End-to-end flows against a local DynamoDB (via `moto` or a local DynamoDB Docker
 - Register → Verify OTP → Login → Refresh → Logout
 - Register → Login fail 5× → account locked → wait for auto-unlock → login succeeds
 - Register master → create internal user → assign role → login as that user
+- PUT /auth/me with email change → verify OTP → confirm new email is applied
 
 ### 4.3 Add tests to CI
 
