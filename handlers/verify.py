@@ -22,12 +22,6 @@ from utils.schemas import verification_schema, resend_otp_schema
 from utils.validators import validate_email
 
 
-def _compute_is_verified(user: dict, email_verified: bool = None, phone_verified: bool = None) -> bool:
-    ev = email_verified if email_verified is not None else user.get('email_verified', False)
-    pv = phone_verified if phone_verified is not None else user.get('phone_verified', False)
-    return ev or pv
-
-
 @validate_request_body(verification_schema)
 def verify(event, context):
     """
@@ -55,13 +49,11 @@ def verify(event, context):
         # ── Registration verifications ────────────────────────────────────────
         if otp_type == OTPType.REGISTRATION_EMAIL:
             updates['email_verified'] = True
-            updates['is_verified'] = _compute_is_verified(user, email_verified=True)
-            response_data.update({'email_verified': True, 'is_verified': updates['is_verified']})
+            response_data['email_verified'] = True
 
         elif otp_type == OTPType.REGISTRATION_PHONE:
             updates['phone_verified'] = True
-            updates['is_verified'] = _compute_is_verified(user, phone_verified=True)
-            response_data.update({'phone_verified': True, 'is_verified': updates['is_verified']})
+            response_data['phone_verified'] = True
 
         # ── Add / change email ────────────────────────────────────────────────
         elif otp_type in (OTPType.ADD_EMAIL, OTPType.CHANGE_EMAIL):
@@ -76,11 +68,9 @@ def verify(event, context):
 
             updates['email'] = new_email
             updates['email_verified'] = True
-            updates['is_verified'] = _compute_is_verified(user, email_verified=True)
             response_data.update({
                 'email': mask_email(new_email),
                 'email_verified': True,
-                'is_verified': updates['is_verified'],
             })
 
         # ── Add / change phone ────────────────────────────────────────────────
@@ -95,11 +85,9 @@ def verify(event, context):
 
             updates['phone'] = new_phone
             updates['phone_verified'] = True
-            updates['is_verified'] = _compute_is_verified(user, phone_verified=True)
             response_data.update({
                 'phone': mask_phone(new_phone),
                 'phone_verified': True,
-                'is_verified': updates['is_verified'],
             })
 
         # ── Forgot password ───────────────────────────────────────────────────

@@ -251,7 +251,8 @@ def registration_success_response(user: Dict, message: str = "Registration succe
             'last_name': user.get('last_name'),
             'phone': user.get('phone'),
             'role': user.get('role'),
-            'is_verified': user.get('is_verified', False),
+            'email_verified': user.get('email_verified', False),
+            'phone_verified': user.get('phone_verified', False),
             'created_at': user.get('created_at')
         },
         message=message

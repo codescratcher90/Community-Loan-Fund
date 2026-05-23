@@ -30,29 +30,28 @@ from utils.schemas import login_schema
 from middleware import login_rate_limit
 
 
-def _try_resend_otp(user_id: str, otp_type: str, contact: str) -> str:
+def _try_resend_otp(user_id: str, otp_type: str, contact: str) -> tuple[bool, str]:
     """
-    Attempt to resend an OTP if cooldown has passed.
-    Returns the masked contact string.
+    Resend OTP if cooldown has passed.
+    Returns (was_sent, masked_contact).
     """
     existing = VerificationCodeDB.get_code(user_id, otp_type)
     can_resend = True
     if existing:
         can_resend, _ = check_resend_cooldown(existing)
 
+    masked = mask_email(contact) if otp_type in EMAIL_OTP_TYPES else mask_phone(contact)
+
     if can_resend:
         record = create_otp_record(user_id, otp_type, contact)
         VerificationCodeDB.create_code(record)
         if otp_type in EMAIL_OTP_TYPES:
             send_email_otp(contact, record['code'], otp_type)
-            return mask_email(contact)
         else:
             send_sms_otp(contact, record['code'], otp_type)
-            return mask_phone(contact)
+        return True, masked
 
-    if otp_type in EMAIL_OTP_TYPES:
-        return mask_email(contact)
-    return mask_phone(contact)
+    return False, masked
 
 
 @login_rate_limit()
@@ -91,7 +90,7 @@ def login(event, context):
         # Settings
         max_failed = get_setting('max_failed_login_attempts', 5)
         lockout_minutes = get_setting('account_lockout_duration_minutes', 30)
-        email_verification_required = get_setting('email_verification_required', True)
+        require_verification = get_setting('require_otp_on_registration', True)
 
         # Auto-unlock check
         if user.get('is_locked', False):
@@ -108,11 +107,18 @@ def login(event, context):
                 return error_response(msg, status_code=403)
 
         # Verification check — only for the contact method used to log in
-        if email_verification_required:
+        if require_verification:
             if login_via == 'email' and not user.get('email_verified', False):
-                masked = _try_resend_otp(user['user_id'], OTPType.REGISTRATION_EMAIL, login_contact)
+                was_sent, masked = _try_resend_otp(
+                    user['user_id'], OTPType.REGISTRATION_EMAIL, login_contact
+                )
+                msg = (
+                    "Email address not verified. A new verification code has been sent."
+                    if was_sent else
+                    "Email address not verified. Use the code already sent to your email."
+                )
                 return error_response(
-                    "Email address not verified. A new verification code has been sent.",
+                    msg,
                     status_code=403,
                     error_code="VERIFICATION_REQUIRED",
                     error_details={
@@ -122,9 +128,16 @@ def login(event, context):
                     },
                 )
             if login_via == 'phone' and not user.get('phone_verified', False):
-                masked = _try_resend_otp(user['user_id'], OTPType.REGISTRATION_PHONE, login_contact)
+                was_sent, masked = _try_resend_otp(
+                    user['user_id'], OTPType.REGISTRATION_PHONE, login_contact
+                )
+                msg = (
+                    "Phone number not verified. A new verification code has been sent."
+                    if was_sent else
+                    "Phone number not verified. Use the code already sent to your phone."
+                )
                 return error_response(
-                    "Phone number not verified. A new verification code has been sent.",
+                    msg,
                     status_code=403,
                     error_code="VERIFICATION_REQUIRED",
                     error_details={

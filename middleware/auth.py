@@ -52,7 +52,7 @@ def require_auth(resource: Optional[str] = None, operation: Optional[str] = None
             if user.get('is_locked', False):
                 return forbidden_response("Account is locked")
 
-            if not user.get('is_verified', False):
+            if not (user.get('email_verified', False) or user.get('phone_verified', False)):
                 return forbidden_response("Account is not verified")
 
             user_role = user.get('role', 'customer')

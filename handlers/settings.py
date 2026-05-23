@@ -17,7 +17,6 @@ ALLOWED_SETTINGS = {
     'allow_public_signup':              bool,
     'allow_adding_new_users':           bool,
     'require_otp_on_registration':      bool,
-    'email_verification_required':      bool,
     'default_public_role':              str,
     'min_password_length':              int,
     'max_failed_login_attempts':        int,

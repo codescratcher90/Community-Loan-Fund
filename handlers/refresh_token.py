@@ -54,7 +54,7 @@ def refresh(event, context):
             return error_response("Account is locked", status_code=403)
         
         # Check if account is verified
-        if not user.get('is_verified', False):
+        if not (user.get('email_verified', False) or user.get('phone_verified', False)):
             return error_response("Account is not verified", status_code=403)
         
         # Generate new access token
