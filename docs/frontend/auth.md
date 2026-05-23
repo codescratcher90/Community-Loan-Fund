@@ -7,21 +7,21 @@ and the one-time master-user bootstrap.
 
 ## Contents
 
-| Endpoint | Description |
-|---|---|
-| [`POST /auth/register`](#post-auth-register) | Create a new public account |
-| [`POST /auth/verify`](#post-auth-verify) | Submit an OTP code |
-| [`POST /auth/resend-otp`](#post-auth-resend-otp) | Resend a pending OTP |
-| [`POST /auth/login`](#post-auth-login) | Login and receive tokens |
-| [`POST /auth/refresh`](#post-auth-refresh) | Exchange refresh token for a new access token |
-| [`POST /auth/logout`](#post-auth-logout) | Revoke a refresh token |
-| [`POST /auth/register-master`](#post-auth-register-master) | Bootstrap the first master user |
+| # | Endpoint | Description |
+|---|---|---|
+| 1 | [POST /auth/register](#post-auth-register) | Create a new public account |
+| 2 | [POST /auth/verify](#post-auth-verify) | Submit an OTP code |
+| 3 | [POST /auth/resend-otp](#post-auth-resend-otp) | Resend a pending OTP |
+| 4 | [POST /auth/login](#post-auth-login) | Login and receive tokens |
+| 5 | [POST /auth/refresh](#post-auth-refresh) | Exchange refresh token for a new access token |
+| 6 | [POST /auth/logout](#post-auth-logout) | Revoke a refresh token |
+| 7 | [POST /auth/register-master](#post-auth-register-master) | Bootstrap the first master user |
 
 ---
 
 <a id="post-auth-register"></a>
 
-## `POST /auth/register`
+## 1. POST /auth/register
 
 ```http
 POST /auth/register
@@ -67,7 +67,7 @@ Email and phone are **masked** in the response for security.
 }
 ```
 
-Save the `user_id` — you'll need it for `POST /auth/verify` and `POST /auth/resend-otp`.
+Save the `user_id` — you'll need it for endpoints 2 and 3.
 
 ### Errors
 
@@ -117,18 +117,18 @@ curl -X POST $API_URL/auth/register \
 
 <a id="post-auth-verify"></a>
 
-## `POST /auth/verify`
+## 2. POST /auth/verify
 
 ```http
 POST /auth/verify
 ```
 
 Submit a 6-digit OTP code. The `otp_type` tells the server what to do on
-successful verification — mark email/phone verified, apply a pending contact change,
-unlock a sensitive action, etc.
+successful verification — mark email/phone verified, apply a pending contact
+change, unlock a sensitive action, etc.
 
 **Auth:** None  
-**Prerequisites:** A pending OTP for this `user_id` + `otp_type` combination must exist. Created by `POST /auth/register`, `POST /auth/login` (VERIFICATION_REQUIRED flow), or `PUT /auth/me`
+**Prerequisites:** A pending OTP for this `user_id` + `otp_type` combination must exist. Created by endpoint 1, the VERIFICATION_REQUIRED response from endpoint 4, or `PUT /auth/me`
 
 ### Request Body
 
@@ -250,7 +250,7 @@ curl -X POST $API_URL/auth/verify \
 
 <a id="post-auth-resend-otp"></a>
 
-## `POST /auth/resend-otp`
+## 3. POST /auth/resend-otp
 
 ```http
 POST /auth/resend-otp
@@ -261,7 +261,7 @@ the OTP was first created — the caller cannot redirect it elsewhere.
 A 60-second cooldown is enforced between resends.
 
 **Auth:** None  
-**Prerequisites:** A pending OTP of the specified type must already exist for this `user_id`. Created by `POST /auth/register`, the VERIFICATION_REQUIRED login flow, or `PUT /auth/me`
+**Prerequisites:** A pending OTP of the specified type must already exist for this `user_id`. Created by endpoint 1, the VERIFICATION_REQUIRED response from endpoint 4, or `PUT /auth/me`
 
 ### Request Body
 
@@ -319,7 +319,7 @@ curl -X POST $API_URL/auth/resend-otp \
 
 <a id="post-auth-login"></a>
 
-## `POST /auth/login`
+## 4. POST /auth/login
 
 ```http
 POST /auth/login
@@ -369,8 +369,8 @@ OTP (when the cooldown has passed) and returns **403 VERIFICATION_REQUIRED**.
 ```
 
 `expires_in` is in seconds. Store both tokens client-side. Use `access` in the
-`Authorization` header for protected requests. Use `refresh` to get a new access
-token when it expires.
+`Authorization` header for protected requests. Use `refresh` with endpoint 5 to
+get a new access token when it expires.
 
 ### Errors
 
@@ -403,7 +403,7 @@ The message differs depending on the OTP cooldown state:
 - `"Use the code already sent to your email."` — cooldown still active, use existing code
 
 Use `error.details.otp_type` and the `user_id` from your registration response
-to call `POST /auth/resend-otp` manually if needed.
+to call endpoint 3 manually if needed.
 
 ### Examples
 
@@ -423,7 +423,7 @@ curl -X POST $API_URL/auth/login \
 
 <a id="post-auth-refresh"></a>
 
-## `POST /auth/refresh`
+## 5. POST /auth/refresh
 
 ```http
 POST /auth/refresh
@@ -433,7 +433,7 @@ Exchange a refresh token for a new access token. The refresh token is **not
 rotated** — keep it secure and reuse it until it expires (30 days).
 
 **Auth:** None (refresh token in body)  
-**Prerequisites:** A valid, non-revoked refresh token from a previous `POST /auth/login`
+**Prerequisites:** A valid, non-revoked refresh token from endpoint 4
 
 ### Request Body
 
@@ -475,7 +475,7 @@ curl -X POST $API_URL/auth/refresh \
 
 <a id="post-auth-logout"></a>
 
-## `POST /auth/logout`
+## 6. POST /auth/logout
 
 ```http
 POST /auth/logout
@@ -485,7 +485,7 @@ Revoke a refresh token. The access token cannot be revoked directly — it expir
 naturally after 30 minutes. Discard it from client storage immediately on logout.
 
 **Auth:** Bearer token (access token) required  
-**Prerequisites:** A valid access token **and** the refresh token to revoke (both from `POST /auth/login`)
+**Prerequisites:** A valid access token and the refresh token to revoke — both from endpoint 4
 
 ### Request Body
 
@@ -517,15 +517,14 @@ curl -X POST $API_URL/auth/logout \
 
 <a id="post-auth-register-master"></a>
 
-## `POST /auth/register-master`
+## 7. POST /auth/register-master
 
 ```http
 POST /auth/register-master
 ```
 
-Create the first master (system administrator) account. This is a one-time
-bootstrap step — use the `MASTER_SECRET_KEY` configured in your deployment
-secrets. Master users are auto-verified and bypass all permission checks.
+Create the first master (system administrator) account. One-time bootstrap step.
+Master users are auto-verified and bypass all permission checks.
 
 **Auth:** Secret key in request body  
 **Prerequisites:** `MASTER_SECRET_KEY` environment variable must be set on the server. Typically called once immediately after first deployment.
@@ -586,4 +585,7 @@ curl -X POST $API_URL/auth/register-master \
 
 ---
 
-> ← Previous: [Overview](overview.md) &nbsp;|&nbsp; Next → [Profile](profile.md)
+## Related
+
+- [Overview](overview.md) — full endpoint table and response envelope reference
+- [Profile](profile.md) — using the access tokens returned by endpoint 4

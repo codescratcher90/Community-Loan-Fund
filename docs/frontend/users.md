@@ -8,19 +8,19 @@ users register via `POST /auth/register`.
 
 ## Contents
 
-| Endpoint | Description |
-|---|---|
-| [`GET /users`](#get-users) | List users (tenant-scoped) |
-| [`POST /users`](#post-users) | Create an internal user |
-| [`GET /users/{id}`](#get-users-id) | Get a single user by ID |
-| [`PUT /users/{id}/role`](#put-users-id-role) | Change a user's role |
-| [`DELETE /users/{id}`](#delete-users-id) | Permanently delete a user |
+| # | Endpoint | Description |
+|---|---|---|
+| 1 | [GET /users](#get-users) | List users (tenant-scoped) |
+| 2 | [POST /users](#post-users) | Create an internal user |
+| 3 | [GET /users/{id}](#get-users-id) | Get a single user by ID |
+| 4 | [PUT /users/{id}/role](#put-users-id-role) | Change a user's role |
+| 5 | [DELETE /users/{id}](#delete-users-id) | Permanently delete a user |
 
 ---
 
 <a id="get-users"></a>
 
-## `GET /users`
+## 1. GET /users
 
 ```http
 GET /users
@@ -88,7 +88,7 @@ curl -X GET "$API_URL/users?limit=50" \
 
 <a id="post-users"></a>
 
-## `POST /users`
+## 2. POST /users
 
 ```http
 POST /users
@@ -98,7 +98,7 @@ Create an internal user (pre-verified, with a role and tenant). Internal users
 bypass the OTP verification flow — they are ready to log in immediately.
 
 **Auth:** Bearer token required. Role: admin or above  
-**Prerequisites:** A valid access token from `POST /auth/login` with admin or higher role. The `allow_adding_new_users` setting must be `true` (default). Cannot create `customer` role users via this endpoint — use `POST /auth/register` instead.
+**Prerequisites:** A valid access token from `POST /auth/login` with admin or higher role. The `allow_adding_new_users` setting must be `true` (default). Cannot create `customer` role users here — use `POST /auth/register` instead.
 
 ### Request Body
 
@@ -186,7 +186,7 @@ curl -X POST $API_URL/users \
 
 <a id="get-users-id"></a>
 
-## `GET /users/{id}`
+## 3. GET /users/{id}
 
 ```http
 GET /users/{id}
@@ -247,7 +247,7 @@ curl -X GET $API_URL/users/550e8400-e29b-41d4-a716-446655440000 \
 
 <a id="put-users-id-role"></a>
 
-## `PUT /users/{id}/role`
+## 4. PUT /users/{id}/role
 
 ```http
 PUT /users/{id}/role
@@ -319,7 +319,7 @@ curl -X PUT $API_URL/users/550e8400-e29b-41d4-a716-446655440000/role \
 
 <a id="delete-users-id"></a>
 
-## `DELETE /users/{id}`
+## 5. DELETE /users/{id}
 
 ```http
 DELETE /users/{id}
@@ -327,7 +327,7 @@ DELETE /users/{id}
 
 Permanently delete a user and revoke all their refresh tokens.
 
-**Auth:** Bearer token required. Role: **master only**  
+**Auth:** Bearer token required. Role: master only  
 **Prerequisites:** A valid master access token. Cannot delete your own account.
 
 ### Path Parameters
@@ -363,4 +363,8 @@ curl -X DELETE $API_URL/users/550e8400-e29b-41d4-a716-446655440000 \
 
 ---
 
-> ← Previous: [Profile](profile.md) &nbsp;|&nbsp; Next → [Settings](settings.md)
+## Related
+
+- [Profile](profile.md) — user self-management via /auth/me
+- [Settings](settings.md) — `allow_adding_new_users` controls endpoint 2
+- [Permissions](permissions.md) — RBAC rules for all user operations

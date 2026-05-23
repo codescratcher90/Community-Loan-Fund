@@ -96,26 +96,26 @@ once; if refresh also fails, redirect to login.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/auth/register` | None | Register with email, phone, or both |
-| `POST` | `/auth/register-master` | Secret key in body | Bootstrap first master user |
-| `POST` | `/auth/verify` | None | Submit OTP code |
-| `POST` | `/auth/resend-otp` | None | Resend a pending OTP |
-| `POST` | `/auth/login` | None | Login — returns access + refresh tokens |
-| `POST` | `/auth/refresh` | Refresh token in body | Get new access token |
-| `POST` | `/auth/logout` | Bearer token | Revoke refresh token |
-| `GET` | `/auth/me` | Bearer token | Get own profile |
-| `PUT` | `/auth/me` | Bearer token | Update profile |
-| `GET` | `/users` | Bearer (owner+) | List users |
-| `POST` | `/users` | Bearer (admin+) | Create internal user |
-| `GET` | `/users/{id}` | Bearer (owner+) | Get user by ID |
-| `PUT` | `/users/{id}/role` | Bearer (admin+) | Change user role |
-| `DELETE` | `/users/{id}` | Bearer (master) | Delete user |
-| `GET` | `/settings` | Bearer (owner+) | Get app settings |
-| `PUT` | `/settings` | Bearer (master) | Update app settings |
-| `GET` | `/permissions` | Bearer (master) | List all RBAC configs |
-| `GET` | `/permissions/{resource}` | Bearer (master) | Get one resource's config |
-| `PUT` | `/permissions/{resource}` | Bearer (master) | Replace a resource's config |
-| `POST` | `/permissions/seed` | Bearer (master) | Write code defaults to DB |
+| POST | `/auth/register` | None | Register with email, phone, or both |
+| POST | `/auth/register-master` | Secret key in body | Bootstrap first master user |
+| POST | `/auth/verify` | None | Submit OTP code |
+| POST | `/auth/resend-otp` | None | Resend a pending OTP |
+| POST | `/auth/login` | None | Login — returns access + refresh tokens |
+| POST | `/auth/refresh` | Refresh token in body | Get new access token |
+| POST | `/auth/logout` | Bearer token | Revoke refresh token |
+| GET | `/auth/me` | Bearer token | Get own profile |
+| PUT | `/auth/me` | Bearer token | Update profile |
+| GET | `/users` | Bearer (owner+) | List users |
+| POST | `/users` | Bearer (admin+) | Create internal user |
+| GET | `/users/{id}` | Bearer (owner+) | Get user by ID |
+| PUT | `/users/{id}/role` | Bearer (admin+) | Change user role |
+| DELETE | `/users/{id}` | Bearer (master) | Delete user |
+| GET | `/settings` | Bearer (owner+) | Get app settings |
+| PUT | `/settings` | Bearer (master) | Update app settings |
+| GET | `/permissions` | Bearer (master) | List all RBAC configs |
+| GET | `/permissions/{resource}` | Bearer (master) | Get one resource's config |
+| PUT | `/permissions/{resource}` | Bearer (master) | Replace a resource's config |
+| POST | `/permissions/seed` | Bearer (master) | Write code defaults to DB |
 
 ---
 
@@ -227,14 +227,10 @@ The `otp_type` used depends on whether the contact field already exists:
 
 ---
 
-## See Also
+## Related
 
-- [Authentication endpoints](auth.md) — register, verify, resend-otp, login, refresh, logout, register-master
-- [Profile endpoints](profile.md) — `GET /auth/me`, `PUT /auth/me`
-- [User management](users.md) — `/users`
-- [Settings](settings.md) — `/settings`
-- [Permissions](permissions.md) — `/permissions`
-
----
-
-> **Next →** [Authentication](auth.md)
+- [Authentication](auth.md) — register, verify, resend-otp, login, refresh, logout, register-master
+- [Profile](profile.md) — GET/PUT /auth/me
+- [Users](users.md) — /users endpoints
+- [Settings](settings.md) — /settings endpoints
+- [Permissions](permissions.md) — /permissions endpoints and role hierarchy
