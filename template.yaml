@@ -40,6 +40,11 @@ Parameters:
     Description: Secret key for master user registration
     Default: your-super-secret-master-key-here
 
+  FromEmail:
+    Type: String
+    Description: Verified SES sender address (e.g. noreply@yourdomain.com)
+    Default: noreply@example.com
+
 # ========================================
 # Global Configuration
 # ========================================
@@ -57,6 +62,7 @@ Globals:
         JWT_SECRET: !Ref JWTSecret
         REFRESH_TOKEN_SECRET: !Ref RefreshTokenSecret
         MASTER_SECRET_KEY: !Ref MasterSecretKey
+        FROM_EMAIL: !Ref FromEmail
         ACCESS_TOKEN_EXPIRY: 1800
         REFRESH_TOKEN_EXPIRY: 2592000
         VERIFICATION_CODE_EXPIRY: 600
@@ -92,6 +98,12 @@ Resources:
             TableName: !Ref RateLimitsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref AppSettingsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: '*'
       Events:
         # Auth Endpoints
         RegisterAPI:
