@@ -27,11 +27,12 @@ from handlers import (
 from handlers.settings import (
     get_settings,
     update_settings,
+)
+from handlers.permissions import (
     get_all_permissions,
     get_resource_permissions,
     update_resource_permissions,
     seed_permissions,
-    clear_permissions_cache,
 )
 from utils import error_response
 
@@ -66,13 +67,12 @@ ROUTES = {
     'GET /users/{id}': get_user,
     'PUT /users/{id}/role': update_user_role,
     'DELETE /users/{id}': delete_user,
-    'GET /settings':                              get_settings,
-    'PUT /settings':                              update_settings,
-    'GET /settings/permissions':                  get_all_permissions,
-    'GET /settings/permissions/{resource}':        get_resource_permissions,
-    'PUT /settings/permissions/{resource}':        update_resource_permissions,
-    'POST /settings/permissions/seed':             seed_permissions,
-    'POST /settings/permissions/cache/clear':      clear_permissions_cache,
+    'GET /settings':                         get_settings,
+    'PUT /settings':                         update_settings,
+    'GET /permissions':                      get_all_permissions,
+    'GET /permissions/{resource}':           get_resource_permissions,
+    'PUT /permissions/{resource}':           update_resource_permissions,
+    'POST /permissions/seed':                seed_permissions,
 }
 
 

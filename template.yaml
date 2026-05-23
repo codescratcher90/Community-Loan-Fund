@@ -186,35 +186,30 @@ Resources:
             RestApiId: !Ref AuthAPI
             Path: /settings
             Method: PUT
+        # Permission Endpoints
         GetPermissionsAPI:
           Type: Api
           Properties:
             RestApiId: !Ref AuthAPI
-            Path: /settings/permissions
+            Path: /permissions
             Method: GET
         GetResourcePermissionsAPI:
           Type: Api
           Properties:
             RestApiId: !Ref AuthAPI
-            Path: /settings/permissions/{resource}
+            Path: /permissions/{resource}
             Method: GET
         UpdateResourcePermissionsAPI:
           Type: Api
           Properties:
             RestApiId: !Ref AuthAPI
-            Path: /settings/permissions/{resource}
+            Path: /permissions/{resource}
             Method: PUT
         SeedPermissionsAPI:
           Type: Api
           Properties:
             RestApiId: !Ref AuthAPI
-            Path: /settings/permissions/seed
-            Method: POST
-        ClearPermissionsCacheAPI:
-          Type: Api
-          Properties:
-            RestApiId: !Ref AuthAPI
-            Path: /settings/permissions/cache/clear
+            Path: /permissions/seed
             Method: POST
 
   # ========================================
@@ -320,25 +315,19 @@ Resources:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
-          /settings/permissions:
+          /permissions:
             get:
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
-          /settings/permissions/seed:
+          /permissions/seed:
             post:
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
-          /settings/permissions/cache/clear:
-            post:
-              x-amazon-apigateway-integration:
-                httpMethod: POST
-                type: aws_proxy
-                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
-          /settings/permissions/{resource}:
+          /permissions/{resource}:
             get:
               x-amazon-apigateway-integration:
                 httpMethod: POST

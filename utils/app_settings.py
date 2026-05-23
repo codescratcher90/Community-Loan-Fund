@@ -12,6 +12,7 @@ Permission design: secure by default.
   Only master bypasses all permission checks.
 """
 import boto3
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Optional
 from boto3.dynamodb.conditions import Attr
@@ -178,15 +179,59 @@ def get_resource_config(resource: str) -> Optional[dict]:
         return None  # fail closed
 
 
-def set_resource_config(resource: str, operations: dict) -> None:
-    """Write the operations dict for a resource to DynamoDB and update cache."""
+def set_resource_config(
+    resource: str,
+    operations: dict,
+    display_name: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict:
+    """
+    Write the resource permission record to DynamoDB.
+    Preserves existing created_at, display_name, and description on update.
+    Auto-clears the in-memory cache for this resource so the change takes
+    effect immediately on the current Lambda container.
+    """
     cache_key = f'resource_permission:{resource}'
+
+    # Fetch existing record to preserve metadata
+    existing_meta: dict = {}
+    try:
+        response = settings_table.get_item(Key={'setting_key': cache_key})
+        if 'Item' in response:
+            existing_value = response['Item'].get('setting_value', {})
+            if isinstance(existing_value, dict) and 'operations' in existing_value:
+                existing_meta = {
+                    'created_at':   existing_value.get('created_at'),
+                    'display_name': existing_value.get('display_name'),
+                    'description':  existing_value.get('description'),
+                }
+    except Exception as e:
+        print(f"[WARN] Could not fetch existing config for '{resource}': {e}")
+
+    now = datetime.utcnow().isoformat()
+    record: dict = {
+        'operations': operations,
+        'created_at': existing_meta.get('created_at') or now,
+        'updated_at': now,
+    }
+
+    resolved_display_name = display_name if display_name is not None else existing_meta.get('display_name')
+    resolved_description  = description  if description  is not None else existing_meta.get('description')
+    if resolved_display_name is not None:
+        record['display_name'] = resolved_display_name
+    if resolved_description is not None:
+        record['description'] = resolved_description
+
     settings_table.put_item(Item={
         'setting_key':   cache_key,
-        'setting_value': operations,
+        'setting_value': record,
         'setting_type':  'map',
     })
-    _resource_permission_cache[cache_key] = operations
+
+    # Auto-clear this resource from cache so next request re-reads from DB
+    _resource_permission_cache.pop(cache_key, None)
+
+    return record
 
 
 def has_resource_permission(resource: str, operation: str, role: str) -> bool:
@@ -196,6 +241,9 @@ def has_resource_permission(resource: str, operation: str, role: str) -> bool:
       - Operation not listed in the record → denied
       - Role not in the allowed list → denied
       - master role → always allowed (bypasses everything)
+    Supports both storage formats:
+      - New: {"operations": {...}, "display_name": "...", ...}
+      - Legacy flat: {"list": [...], "read": [...], ...}
     """
     if role == 'master':
         return True
@@ -204,7 +252,9 @@ def has_resource_permission(resource: str, operation: str, role: str) -> bool:
     if config is None:
         return False
 
-    allowed_roles = config.get(operation)
+    # Handle nested format {operations: {...}} and legacy flat {op: [...]}
+    ops = config.get('operations', config)
+    allowed_roles = ops.get(operation)
     if allowed_roles is None:
         return False
 
@@ -296,8 +346,13 @@ class AppSettingsDB:
         return get_resource_config(resource)
 
     @staticmethod
-    def set_resource_config(resource: str, operations: dict) -> None:
-        set_resource_config(resource, operations)
+    def set_resource_config(
+        resource: str,
+        operations: dict,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> dict:
+        return set_resource_config(resource, operations, display_name, description)
 
     @staticmethod
     def has_resource_permission(resource: str, operation: str, role: str) -> bool:
