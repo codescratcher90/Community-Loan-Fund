@@ -6,11 +6,12 @@ from utils import (
     AppSettingsDB,
     success_response,
     error_response,
-    validation_error_response
+    validation_error_response,
 )
 from utils.schema_validator import validate_request_body
-from utils.schemas import update_settings_schema
+from utils.schemas import update_settings_schema, update_role_permissions_schema
 from middleware import require_auth
+from config.permissions import Actions, VALID_ROLES, ROLE_PERMISSIONS, get_all_actions
 
 # Define allowed settings and their types for validation
 ALLOWED_SETTINGS = {
@@ -138,3 +139,90 @@ def update_settings(event, context):
     except Exception as e:
         print(f"Update settings error: {str(e)}")
         return error_response("Failed to update settings", status_code=500)
+
+
+@require_auth(action=Actions.READ_SETTINGS)
+def get_permissions(event, context):
+    """
+    GET /settings/permissions
+    Return all role permission sets plus the full list of available actions.
+    """
+    try:
+        permissions  = AppSettingsDB.get_all_role_permissions()
+        all_actions  = sorted(get_all_actions())
+        return success_response(data={
+            'permissions': permissions,
+            'all_actions': all_actions,
+        })
+    except Exception as e:
+        print(f"Get permissions error: {str(e)}")
+        return error_response("Failed to get permissions", status_code=500)
+
+
+@require_auth(action=Actions.UPDATE_SETTINGS)
+@validate_request_body(update_role_permissions_schema)
+def update_role_permissions(event, context):
+    """
+    PUT /settings/permissions/{role}
+    Replace, grant, or revoke actions for a role.
+
+    Body (pick one form):
+      { "actions": ["action1", ...] }          — full replace
+      { "grant": ["action1", ...] }            — add actions
+      { "revoke": ["action1", ...] }           — remove actions
+      { "grant": [...], "revoke": [...] }      — add and remove in one call
+    """
+    try:
+        role = (event.get('pathParameters') or {}).get('role')
+        if not role or role not in VALID_ROLES:
+            return error_response(
+                f"Invalid role. Must be one of: {', '.join(r for r in VALID_ROLES if r != 'master')}",
+                status_code=400,
+                error_code="INVALID_ROLE",
+            )
+        if role == 'master':
+            return error_response(
+                "Cannot modify master permissions",
+                status_code=403,
+                error_code="FORBIDDEN",
+            )
+
+        body = json.loads(event.get('body', '{}'))
+        valid_actions = get_all_actions()
+
+        if 'actions' in body:
+            requested = set(body['actions'])
+            unknown   = requested - valid_actions
+            if unknown:
+                return validation_error_response(
+                    "Unknown actions",
+                    {'actions': f"Unknown: {', '.join(sorted(unknown))}"},
+                )
+            AppSettingsDB.set_role_permissions(role, requested)
+            updated = requested
+        else:
+            grant   = set(body.get('grant',  []))
+            revoke  = set(body.get('revoke', []))
+            unknown = (grant | revoke) - valid_actions
+            if unknown:
+                return validation_error_response(
+                    "Unknown actions",
+                    {'actions': f"Unknown: {', '.join(sorted(unknown))}"},
+                )
+            if grant:
+                updated = AppSettingsDB.grant_role_actions(role, grant)
+            else:
+                updated = AppSettingsDB.get_role_permissions(role)
+                if updated is None:
+                    updated = set(ROLE_PERMISSIONS.get(role, set()))
+            if revoke:
+                updated = AppSettingsDB.revoke_role_actions(role, revoke)
+
+        return success_response(
+            data={'role': role, 'actions': sorted(updated)},
+            message=f"Permissions updated for role '{role}'",
+        )
+
+    except Exception as e:
+        print(f"Update role permissions error: {str(e)}")
+        return error_response("Failed to update role permissions", status_code=500)

@@ -1,162 +1,248 @@
 """
-Role-based Access Control Configuration
-Multi-tenant RBAC system with internal (tenant-scoped) and external (global) roles.
+Role-based Access Control
+-------------------------
+Two-layer system:
+  1. Role hierarchy  — numeric levels for "can user A modify user B?"
+  2. Action matrix   — explicit named actions for "can role X do Y?"
+
+To add a new role:
+  1. Add it to ROLE_HIERARCHY with an appropriate level
+  2. Add it to INTERNAL_ROLES, EXTERNAL_ROLES, or SYSTEM_ROLES
+  3. Add its allowed actions to ROLE_PERMISSIONS
+
+To add a new action:
+  1. Add a constant to the Actions class
+  2. Add it to the roles that should have it in ROLE_PERMISSIONS
 """
 
-# Role hierarchy (higher number = more privileges)
+
+# ---------------------------------------------------------------------------
+# Role Hierarchy
+# Higher number = more privileges. Used for role-modification guards.
+# ---------------------------------------------------------------------------
 ROLE_HIERARCHY = {
-    'master': 8,        # System developer - god mode, no tenant
-    'owner': 7,         # Tenant owner - manages their organization
-    'admin': 6,         # Tenant administrator
-    'manager': 5,       # Tenant manager
-    'supervisor': 4,    # Tenant supervisor
+    'master':      8,   # System operator — cross-tenant, god mode
+    'owner':       7,   # Tenant owner — full control of their org
+    'admin':       6,   # Tenant administrator
+    'manager':     5,   # Tenant manager
+    'supervisor':  4,   # Tenant supervisor
     'coordinator': 3,   # Tenant coordinator
-    'staff': 2,         # Tenant staff member
-    'customer': 1       # External user - global, no tenant
+    'staff':       2,   # Tenant staff member
+    'customer':    1,   # External user — global, no tenant
 }
 
-# Valid roles list
-VALID_ROLES = list(ROLE_HIERARCHY.keys())
+VALID_ROLES      = list(ROLE_HIERARCHY.keys())
+INTERNAL_ROLES   = ['owner', 'admin', 'manager', 'supervisor', 'coordinator', 'staff']
+EXTERNAL_ROLES   = ['customer']
+SYSTEM_ROLES     = ['master']
 
-# Internal roles (scoped to specific tenant)
-INTERNAL_ROLES = ['owner', 'admin', 'manager', 'supervisor', 'coordinator', 'staff']
 
-# External roles (global users, not scoped to tenant)
-EXTERNAL_ROLES = ['customer']
+# ---------------------------------------------------------------------------
+# Named Actions
+# Add a constant here when you introduce a new capability.
+# ---------------------------------------------------------------------------
+class Actions:
+    # Public (no auth needed)
+    REGISTER        = 'register'
+    REGISTER_MASTER = 'register_master'
+    VERIFY          = 'verify'
+    LOGIN           = 'login'
+    REFRESH_TOKEN   = 'refresh_token'
 
-# System roles (special privileges)
-SYSTEM_ROLES = ['master']
+    # Own profile
+    READ_PROFILE    = 'read_profile'
+    UPDATE_PROFILE  = 'update_profile'
+    LOGOUT          = 'logout'
 
-# Permissions mapping: endpoint -> minimum required role
-PERMISSIONS = {
-    # Auth endpoints (public)
-    'POST:/auth/register': None,
-    'POST:/auth/register-master': None,  # Requires secret key
-    'POST:/auth/verify': None,
-    'POST:/auth/login': None,
-    'POST:/auth/refresh': None,
-    
-    # Auth endpoints (authenticated)
-    'POST:/auth/logout': 'customer',  # Any authenticated user
-    'GET:/auth/me': 'customer',
-    'PUT:/auth/me': 'customer',
+    # User management
+    LIST_USERS      = 'list_users'
+    READ_USER       = 'read_user'
+    CREATE_USER     = 'create_user'
+    UPDATE_USER_ROLE = 'update_user_role'
+    DELETE_USER     = 'delete_user'
 
-    # User management endpoints
-    'GET:/users': 'admin',  # List all users (admin can see tenant users, master sees all)
-    'POST:/users': 'admin',  # Create internal user (admin creates in their tenant, master anywhere)
-    'GET:/users/:id': 'admin',  # Get specific user
-    'PUT:/users/:id/role': 'admin',  # Change user role
-    'DELETE:/users/:id': 'master',  # Delete user (master only)
+    # Settings
+    READ_SETTINGS   = 'read_settings'
+    UPDATE_SETTINGS = 'update_settings'
+
+
+# Actions that require no authentication at all
+PUBLIC_ACTIONS = {
+    Actions.REGISTER,
+    Actions.REGISTER_MASTER,
+    Actions.VERIFY,
+    Actions.LOGIN,
+    Actions.REFRESH_TOKEN,
 }
+
+
+# ---------------------------------------------------------------------------
+# Role → Action Matrix
+# master implicitly has ALL actions.
+# To expand a role's access, add actions to its set here.
+# ---------------------------------------------------------------------------
+ROLE_PERMISSIONS: dict[str, set[str]] = {
+    'owner': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+        Actions.LIST_USERS,
+        Actions.READ_USER,
+        Actions.CREATE_USER,
+        Actions.UPDATE_USER_ROLE,
+        Actions.READ_SETTINGS,
+    },
+    'admin': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+        Actions.LIST_USERS,
+        Actions.READ_USER,
+        Actions.CREATE_USER,
+        Actions.UPDATE_USER_ROLE,
+    },
+    'manager': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+        Actions.LIST_USERS,
+        Actions.READ_USER,
+    },
+    'supervisor': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+        Actions.LIST_USERS,
+        Actions.READ_USER,
+    },
+    'coordinator': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+    },
+    'staff': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+    },
+    'customer': {
+        Actions.LOGOUT,
+        Actions.READ_PROFILE,
+        Actions.UPDATE_PROFILE,
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def can_perform(role: str, action: str) -> bool:
+    """
+    Check whether a role is allowed to perform a named action.
+
+    Resolution order:
+      1. Public actions — always allowed, no role needed.
+      2. master role   — always allowed.
+      3. DynamoDB      — live permissions stored by the master at runtime.
+      4. Code defaults — ROLE_PERMISSIONS dict above (fallback if DB unreachable).
+    """
+    if action in PUBLIC_ACTIONS:
+        return True
+    if role == 'master':
+        return True
+
+    # Lazy import avoids circular dependency (utils imports config.settings, not permissions)
+    try:
+        from utils.app_settings import get_role_permissions
+        db_perms = get_role_permissions(role)
+        if db_perms is not None:
+            return action in db_perms
+    except Exception:
+        pass
+
+    return action in ROLE_PERMISSIONS.get(role, set())
+
+
+def get_all_actions() -> set:
+    """Return every action name defined in the Actions class."""
+    return {v for k, v in vars(Actions).items() if not k.startswith('_')}
+
 
 def has_permission(user_role: str, required_role: str) -> bool:
     """
-    Check if user_role has permission for required_role
-    Returns True if user_role is equal to or higher than required_role
+    Hierarchy check: is user_role at least as privileged as required_role?
+    Kept for backward compatibility with existing @require_auth(required_role=...) calls.
     """
     if required_role is None:
         return True
-    
-    user_level = ROLE_HIERARCHY.get(user_role, 0)
+    user_level    = ROLE_HIERARCHY.get(user_role, 0)
     required_level = ROLE_HIERARCHY.get(required_role, 0)
-    
     return user_level >= required_level
+
 
 def can_modify_role(modifier_role: str, target_role: str, new_role: str) -> bool:
     """
-    Check if modifier can change target's role to new_role
-    Rules:
-    - Master can modify anyone
-    - Owner/Admin can modify anyone in their tenant except those at or above their level
-    - Cannot promote someone to a role higher than or equal to your own
+    Can modifier change target's role to new_role?
+    Rules: master can do anything; others cannot touch peers or superiors,
+    and cannot promote anyone to their own level or above.
     """
     modifier_level = ROLE_HIERARCHY.get(modifier_role, 0)
-    target_level = ROLE_HIERARCHY.get(target_role, 0)
-    new_level = ROLE_HIERARCHY.get(new_role, 0)
+    target_level   = ROLE_HIERARCHY.get(target_role, 0)
+    new_level      = ROLE_HIERARCHY.get(new_role, 0)
 
-    # Master can do anything
     if modifier_role == 'master':
         return True
-
-    # Cannot modify master users
-    if target_role == 'master':
+    if target_role == 'master' or new_role == 'master':
         return False
-
-    # Cannot promote to master (only master can do that)
-    if new_role == 'master':
-        return False
-
-    # Can only modify users below your level
     if target_level >= modifier_level:
         return False
-
-    # Cannot promote to your level or higher
     if new_level >= modifier_level:
         return False
-
     return True
 
-def is_internal_role(role: str) -> bool:
-    """
-    Check if role is an internal (tenant-scoped) role
-    """
-    return role in INTERNAL_ROLES
 
-def is_external_role(role: str) -> bool:
+def check_tenant_access(
+    user_role: str,
+    user_tenant_id: str,
+    resource_tenant_id: str,
+    resource_owner_id: str = None,
+    user_id: str = None,
+) -> bool:
     """
-    Check if role is an external (global) role
+    Tenant isolation check.
+      master       → access everything
+      internal role → only resources in their own tenant
+      customer     → only their own resources (by owner id)
     """
-    return role in EXTERNAL_ROLES
-
-def is_system_role(role: str) -> bool:
-    """
-    Check if role is a system role
-    """
-    return role in SYSTEM_ROLES
-
-def requires_tenant(role: str) -> bool:
-    """
-    Check if a role requires tenant_id to be set
-    """
-    return is_internal_role(role)
-
-def check_tenant_access(user_role: str, user_tenant_id: str, resource_tenant_id: str, resource_owner_id: str = None, user_id: str = None) -> bool:
-    """
-    Check if user has access to a resource based on tenant isolation rules
-
-    Args:
-        user_role: The user's role
-        user_tenant_id: The user's tenant_id (None for master/customer)
-        resource_tenant_id: The resource's tenant_id
-        resource_owner_id: The resource owner's user_id (for customer-owned resources)
-        user_id: The current user's ID (for checking ownership)
-
-    Returns:
-        True if user has access, False otherwise
-
-    Rules:
-        - Master: can access everything
-        - Internal users (owner, admin, staff, etc.): can only access resources in their tenant
-        - Customers: can only access their own resources (across all tenants)
-    """
-    # Master can access everything
     if user_role == 'master':
         return True
 
-    # Customer can only access their own resources
     if is_external_role(user_role):
         if resource_owner_id and user_id:
             return resource_owner_id == user_id
         return False
 
-    # Internal users can only access resources in their tenant
     if is_internal_role(user_role):
-        # If user has no tenant_id, deny access (data integrity issue)
         if not user_tenant_id:
             return False
-
-        # Check tenant match
         return user_tenant_id == resource_tenant_id
 
-    # Unknown role, deny access
     return False
+
+
+# ---------------------------------------------------------------------------
+# Role category helpers
+# ---------------------------------------------------------------------------
+
+def is_internal_role(role: str) -> bool:
+    return role in INTERNAL_ROLES
+
+def is_external_role(role: str) -> bool:
+    return role in EXTERNAL_ROLES
+
+def is_system_role(role: str) -> bool:
+    return role in SYSTEM_ROLES
+
+def requires_tenant(role: str) -> bool:
+    return is_internal_role(role)
