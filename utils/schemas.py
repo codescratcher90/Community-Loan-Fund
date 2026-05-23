@@ -326,12 +326,7 @@ update_settings_schema = Schema({
     'require_otp_on_registration': SchemaField(
         field_type=bool,
         required=False,
-        description="Require OTP verification on registration"
-    ),
-    'email_verification_required': SchemaField(
-        field_type=bool,
-        required=False,
-        description="Require email verification"
+        description="Send OTP on registration and require verification before login"
     ),
     'default_public_role': SchemaField(
         field_type=str,

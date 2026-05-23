@@ -42,7 +42,6 @@ DEFAULT_SETTINGS = {
     'allow_public_signup':              True,
     'allow_adding_new_users':           True,
     'require_otp_on_registration':      True,
-    'email_verification_required':      True,
     'default_public_role':              'customer',
     'min_password_length':              4,
     'max_failed_login_attempts':        5,

@@ -58,7 +58,8 @@ def list_users(event, context):
                 'phone': user.get('phone', ''),
                 'role': user['role'],
                 'tenant_id': user.get('tenant_id'),
-                'is_verified': user.get('is_verified', False),
+                'email_verified': user.get('email_verified', False),
+                'phone_verified': user.get('phone_verified', False),
                 'is_locked': user.get('is_locked', False),
                 'created_at': user.get('created_at')
             })
@@ -111,10 +112,9 @@ def get_user(event, context):
             'phone': user.get('phone', ''),
             'role': user['role'],
             'tenant_id': user.get('tenant_id'),
-            'is_verified': user.get('is_verified', False),
-            'is_locked': user.get('is_locked', False),
             'email_verified': user.get('email_verified', False),
             'phone_verified': user.get('phone_verified', False),
+            'is_locked': user.get('is_locked', False),
             'failed_login_attempts': user.get('failed_login_attempts', 0),
             'created_at': user.get('created_at'),
             'updated_at': user.get('updated_at')
@@ -339,7 +339,6 @@ def create_internal_user(event, context):
             'tenant_id': tenant_id,
             'email_verified': True,   # internal users are pre-verified
             'phone_verified': bool(phone),
-            'is_verified': True,
             'is_locked': False,
             'failed_login_attempts': 0,
             'created_at': datetime.utcnow().isoformat(),
@@ -352,15 +351,16 @@ def create_internal_user(event, context):
 
         # Return user data (without password)
         user_response = {
-            'user_id': user_id,
-            'email': email,
-            'first_name': first_name,
-            'last_name': last_name,
-            'phone': phone,
-            'role': role,
-            'tenant_id': tenant_id,
-            'is_verified': True,
-            'created_at': user_data['created_at']
+            'user_id':        user_id,
+            'email':          email,
+            'first_name':     first_name,
+            'last_name':      last_name,
+            'phone':          phone if phone else None,
+            'role':           role,
+            'tenant_id':      tenant_id,
+            'email_verified': True,
+            'phone_verified': bool(phone),
+            'created_at':     user_data['created_at'],
         }
 
         return success_response(

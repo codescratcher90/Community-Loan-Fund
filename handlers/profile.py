@@ -37,7 +37,6 @@ def _safe_user_response(user: dict) -> dict:
         'tenant_id':     user.get('tenant_id'),
         'email_verified': user.get('email_verified', False),
         'phone_verified': user.get('phone_verified', False),
-        'is_verified':   user.get('is_verified', False),
         'is_locked':     user.get('is_locked', False),
         'created_at':    user.get('created_at'),
         'updated_at':    user.get('updated_at'),
