@@ -3,6 +3,7 @@ Registration Handlers
 """
 import uuid
 import json
+import secrets
 from datetime import datetime
 from config import config, VALID_ROLES
 from config.otp import OTPType, EMAIL_OTP_TYPES, PHONE_OTP_TYPES
@@ -155,7 +156,7 @@ def register_master(event, context):
             return error_response("Master registration is not configured", status_code=500)
 
         secret_key = body.get('secret_key', '').strip()
-        if not secret_key or secret_key != config.MASTER_SECRET_KEY.strip():
+        if not secret_key or not secrets.compare_digest(secret_key, config.MASTER_SECRET_KEY.strip()):
             return error_response("Invalid master secret key", status_code=403)
 
         email = body['email'].lower().strip()

@@ -1,19 +1,42 @@
 # User Management Endpoints
 
+Create, read, update, and delete users. Internal users (staff, admin, owner) are
+created here and bypass OTP verification — they can log in immediately. Public
+users register via `POST /auth/register`.
+
 ---
 
-## GET /users
+## Contents
 
-List users. Master sees all users across all tenants; internal roles (owner, admin,
-manager, supervisor) see only users within their own tenant.
+| Endpoint | Description |
+|---|---|
+| [`GET /users`](#get-users) | List users (tenant-scoped) |
+| [`POST /users`](#post-users) | Create an internal user |
+| [`GET /users/{id}`](#get-users-id) | Get a single user by ID |
+| [`PUT /users/{id}/role`](#put-users-id-role) | Change a user's role |
+| [`DELETE /users/{id}`](#delete-users-id) | Permanently delete a user |
 
-**Auth:** Bearer token required. Role: owner or above (see permissions).
+---
+
+<a id="get-users"></a>
+
+## `GET /users`
+
+```http
+GET /users
+```
+
+List users. Master sees all users across all tenants; internal roles (owner,
+admin, manager, supervisor) see only users within their own tenant.
+
+**Auth:** Bearer token required. Role: owner or above  
+**Prerequisites:** A valid access token from `POST /auth/login` with sufficient role
 
 ### Query Parameters
 
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
-| `limit` | integer | 100 | Max users to return |
+| `limit` | integer | `100` | Max users to return |
 
 ### Response `200`
 
@@ -47,10 +70,10 @@ manager, supervisor) see only users within their own tenant.
 
 | Status | When |
 |---|---|
-| 401 | Missing or invalid token |
-| 403 | Role not permitted |
+| `401` | Missing or invalid token |
+| `403` | Role not permitted |
 
-### Example
+### Examples
 
 ```bash
 curl -X GET $API_URL/users \
@@ -63,16 +86,21 @@ curl -X GET "$API_URL/users?limit=50" \
 
 ---
 
-## POST /users
+<a id="post-users"></a>
 
-Create an internal user (pre-verified, with a role and tenant). Internal users bypass
-the OTP verification flow — they are ready to log in immediately.
+## `POST /users`
 
-**Auth:** Bearer token required. Role: admin or above.
+```http
+POST /users
+```
 
-The `allow_adding_new_users` setting must be `true` (default).
+Create an internal user (pre-verified, with a role and tenant). Internal users
+bypass the OTP verification flow — they are ready to log in immediately.
 
-### Request
+**Auth:** Bearer token required. Role: admin or above  
+**Prerequisites:** A valid access token from `POST /auth/login` with admin or higher role. The `allow_adding_new_users` setting must be `true` (default). Cannot create `customer` role users via this endpoint — use `POST /auth/register` instead.
+
+### Request Body
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -84,13 +112,13 @@ The `allow_adding_new_users` setting must be `true` (default).
 | `phone` | string | no | |
 | `tenant_id` | string | conditional | Required for master when creating non-owner internal users |
 
-### Role creation rules
+### Role Creation Rules
 
 | Caller role | Can create |
 |---|---|
-| master | Any role. For `owner`, a new `tenant_id` is auto-generated if not supplied |
-| owner / admin | Any internal role below their own, within their tenant only |
-| Any | Cannot create `customer` role via this endpoint (use public `/auth/register`) |
+| `master` | Any role. For `owner`, a new `tenant_id` is auto-generated if not supplied |
+| `owner` / `admin` | Any internal role below their own, within their tenant only |
+| Any | Cannot create `customer` via this endpoint |
 
 ### Response `201`
 
@@ -118,17 +146,17 @@ The `allow_adding_new_users` setting must be `true` (default).
 
 | Status | When |
 |---|---|
-| 403 | `allow_adding_new_users` is false |
-| 403 | Trying to create an `owner` as non-master |
-| 403 | Trying to create a `customer` via this endpoint |
-| 403 | Target role is at or above caller's own level |
-| 409 | Email already registered |
-| 422 | Validation failed |
+| `403` | `allow_adding_new_users` is false |
+| `403` | Trying to create an `owner` as non-master |
+| `403` | Trying to create a `customer` via this endpoint |
+| `403` | Target role is at or above caller's own level |
+| `409` | Email already registered |
+| `422` | Validation failed |
 
 ### Examples
 
 ```bash
-# Create a staff member (as owner)
+# Create a staff member (as owner/admin)
 curl -X POST $API_URL/users \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
@@ -156,12 +184,25 @@ curl -X POST $API_URL/users \
 
 ---
 
-## GET /users/{id}
+<a id="get-users-id"></a>
+
+## `GET /users/{id}`
+
+```http
+GET /users/{id}
+```
 
 Get a single user by ID. Master can view any user; internal roles can only view
 users within their own tenant.
 
-**Auth:** Bearer token required. Role: owner or above.
+**Auth:** Bearer token required. Role: owner or above  
+**Prerequisites:** A valid access token from `POST /auth/login` with sufficient role. Non-master callers can only access users in their own tenant.
+
+### Path Parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `id` | string (UUID) | The `user_id` of the target user |
 
 ### Response `200`
 
@@ -192,8 +233,8 @@ users within their own tenant.
 
 | Status | When |
 |---|---|
-| 403 | Target user is in a different tenant |
-| 404 | User not found |
+| `403` | Target user is in a different tenant (non-master caller) |
+| `404` | User not found |
 
 ### Example
 
@@ -204,21 +245,35 @@ curl -X GET $API_URL/users/550e8400-e29b-41d4-a716-446655440000 \
 
 ---
 
-## PUT /users/{id}/role
+<a id="put-users-id-role"></a>
 
-Change a user's role. Also handles tenant assignment: promoting to an internal role
-assigns the target to the caller's tenant; demoting to `customer` clears `tenant_id`.
+## `PUT /users/{id}/role`
 
-**Auth:** Bearer token required. Role: admin or above.
+```http
+PUT /users/{id}/role
+```
 
-### Request
+Change a user's role. Also manages tenant assignment: promoting to an internal
+role assigns the target to the caller's tenant; demoting to `customer` clears
+`tenant_id`.
+
+**Auth:** Bearer token required. Role: admin or above  
+**Prerequisites:** A valid access token from `POST /auth/login`. Caller's role must be strictly above both the target user's current role and the new role. Non-master callers can only modify users in their own tenant.
+
+### Path Parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `id` | string (UUID) | The `user_id` of the target user |
+
+### Request Body
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `role` | string | yes | Target role |
 | `tenant_id` | string | no | Master only — override the tenant assigned on promotion |
 
-### Role change rules
+### Role Change Rules
 
 - You cannot change the role of a user at or above your own level.
 - You cannot promote a user to your own level or above.
@@ -245,11 +300,11 @@ assigns the target to the caller's tenant; demoting to `customer` clears `tenant
 
 | Status | When |
 |---|---|
-| 403 | Target user is at or above caller's role level |
-| 403 | New role is at or above caller's role level |
-| 403 | Target user is in a different tenant (non-master) |
-| 404 | User not found |
-| 422 | Invalid role value |
+| `403` | Target user is at or above caller's role level |
+| `403` | New role is at or above caller's role level |
+| `403` | Target user is in a different tenant (non-master) |
+| `404` | User not found |
+| `422` | Invalid role value |
 
 ### Example
 
@@ -262,13 +317,24 @@ curl -X PUT $API_URL/users/550e8400-e29b-41d4-a716-446655440000/role \
 
 ---
 
-## DELETE /users/{id}
+<a id="delete-users-id"></a>
+
+## `DELETE /users/{id}`
+
+```http
+DELETE /users/{id}
+```
 
 Permanently delete a user and revoke all their refresh tokens.
 
-**Auth:** Bearer token required. Role: **master only**.
+**Auth:** Bearer token required. Role: **master only**  
+**Prerequisites:** A valid master access token. Cannot delete your own account.
 
-Cannot delete your own account.
+### Path Parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `id` | string (UUID) | The `user_id` of the target user |
 
 ### Response `200`
 
@@ -285,8 +351,8 @@ Cannot delete your own account.
 
 | Status | When |
 |---|---|
-| 400 | Attempting to delete your own account |
-| 404 | User not found |
+| `400` | Attempting to delete your own account |
+| `404` | User not found |
 
 ### Example
 
@@ -294,3 +360,7 @@ Cannot delete your own account.
 curl -X DELETE $API_URL/users/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer $MASTER_TOKEN"
 ```
+
+---
+
+> ← Previous: [Profile](profile.md) &nbsp;|&nbsp; Next → [Settings](settings.md)

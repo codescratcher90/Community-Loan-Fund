@@ -1,12 +1,31 @@
 # Profile Endpoints
 
+Read and update the currently authenticated user's own profile. Email and phone
+changes go through an OTP verification step rather than updating immediately.
+
 ---
 
-## GET /auth/me
+## Contents
+
+| Endpoint | Description |
+|---|---|
+| [`GET /auth/me`](#get-auth-me) | Get the current user's full profile |
+| [`PUT /auth/me`](#put-auth-me) | Update name, password, email, or phone |
+
+---
+
+<a id="get-auth-me"></a>
+
+## `GET /auth/me`
+
+```http
+GET /auth/me
+```
 
 Get the current user's full profile.
 
-**Auth:** Bearer token required.
+**Auth:** Bearer token required  
+**Prerequisites:** A valid access token from `POST /auth/login`
 
 ### Response `200`
 
@@ -31,7 +50,7 @@ Get the current user's full profile.
 }
 ```
 
-`email` and `phone` are `null` if the user has not provided them.
+`email` and `phone` are `null` if the user has not provided them.  
 `tenant_id` is `null` for `customer` role users and the `master` role.
 
 ### Example
@@ -43,14 +62,22 @@ curl -X GET $API_URL/auth/me \
 
 ---
 
-## PUT /auth/me
+<a id="put-auth-me"></a>
 
-Update the current user's profile. All fields are optional — send only
-the fields you want to change.
+## `PUT /auth/me`
 
-**Auth:** Bearer token required.
+```http
+PUT /auth/me
+```
 
-### Direct updates (take effect immediately)
+Update the current user's profile. All fields are optional — send only the
+fields you want to change. Some fields take effect immediately; others trigger
+an OTP flow and are applied only after verification.
+
+**Auth:** Bearer token required  
+**Prerequisites:** A valid access token from `POST /auth/login`
+
+### Direct Updates (take effect immediately)
 
 | Field | Type | Notes |
 |---|---|---|
@@ -59,25 +86,25 @@ the fields you want to change.
 | `password` | string | Requires `current_password` in the same request |
 | `current_password` | string | Required only when changing password |
 
-### OTP-triggered updates (do not update the field directly)
+### OTP-Triggered Updates (do not update the field directly)
 
 | Field | Type | What happens |
 |---|---|---|
-| `email` | string | OTP sent to the **new** address. Email is updated only after `POST /auth/verify` with `otp_type: "add_email"` or `"change_email"` |
-| `phone` | string | OTP sent to the **new** number. Phone is updated only after `POST /auth/verify` with `otp_type: "add_phone"` or `"change_phone"` |
+| `email` | string | OTP sent to the **new** address. Email is updated only after `POST /auth/verify` with the correct `otp_type` |
+| `phone` | string | OTP sent to the **new** number. Phone is updated only after `POST /auth/verify` with the correct `otp_type` |
 
 The `otp_type` used depends on whether the field already exists on the account:
 
-| Scenario | otp_type |
+| Scenario | `otp_type` |
 |---|---|
 | Adding email for the first time | `add_email` |
-| Changing existing email | `change_email` |
+| Changing an existing email | `change_email` |
 | Adding phone for the first time | `add_phone` |
-| Changing existing phone | `change_phone` |
+| Changing an existing phone | `change_phone` |
 
 ### Response `200`
 
-**Name/password change (no OTP triggered):**
+**Name / password change (no OTP triggered):**
 ```json
 {
   "success": true,
@@ -90,12 +117,12 @@ The `otp_type` used depends on whether the field already exists on the account:
     "last_name": "Doe",
     "email_verified": true,
     "phone_verified": false,
-    ...
+    "..."
   }
 }
 ```
 
-**Email/phone change (OTP triggered):**
+**Email / phone change (OTP triggered):**
 ```json
 {
   "success": true,
@@ -114,13 +141,13 @@ The `otp_type` used depends on whether the field already exists on the account:
         "sent_to": "ne***@example.com"
       }
     ],
-    ...
+    "..."
   }
 }
 ```
 
-The current email is **not changed yet**. After the user verifies the code,
-the new email is applied to the account.
+The current email is **not changed yet**. The new email is applied only after
+the user verifies the code via `POST /auth/verify`.
 
 **Both direct and OTP-triggered in one request:**
 ```json
@@ -130,7 +157,7 @@ the new email is applied to the account.
     "pending_verifications": [
       { "otp_type": "add_phone", "sent_to": "***900" }
     ],
-    ...
+    "..."
   }
 }
 ```
@@ -139,9 +166,9 @@ the new email is applied to the account.
 
 | Status | When |
 |---|---|
-| 409 | New email or phone already in use by another account |
-| 422 | Validation failed (field-level errors in `error.details`) |
-| 400 | `current_password` wrong or no fields provided |
+| `400` | `current_password` wrong, or no fields provided |
+| `409` | New email or phone already in use by another account |
+| `422` | Validation failed (field-level errors in `error.details`) |
 
 ### Examples
 
@@ -176,3 +203,7 @@ curl -X POST $API_URL/auth/verify \
     "otp_type": "change_email"
   }'
 ```
+
+---
+
+> ← Previous: [Authentication](auth.md) &nbsp;|&nbsp; Next → [Users](users.md)
