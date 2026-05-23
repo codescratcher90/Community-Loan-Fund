@@ -62,7 +62,7 @@ Basic-Auth/
 │
 ├── config/
 │   ├── settings.py            # Config class — reads env vars
-│   └── permissions.py        # Role hierarchy + action matrix + can_perform()
+│   └── permissions.py        # Role hierarchy + DEFAULT_RESOURCE_PERMISSIONS
 │
 ├── handlers/                  # One file per feature area
 │   ├── register.py            # POST /auth/register, POST /auth/register-master
@@ -87,7 +87,7 @@ Basic-Auth/
 │   ├── validators.py          # Email, phone, password, name validators
 │   ├── schemas.py             # Request body schema definitions
 │   ├── schema_validator.py    # SchemaField, Schema, @validate_request_body
-│   └── app_settings.py        # Runtime settings + role permissions from DynamoDB
+│   └── app_settings.py        # Runtime settings + resource permissions from DynamoDB
 │
 └── docs/                      # Project documentation
     ├── api-reference.md
@@ -136,67 +136,88 @@ Because the roles are generic, map them to whatever job titles fit your use case
 
 ## Permissions System
 
-Permissions are stored in DynamoDB and checked at runtime via `can_perform(role, action)`.
+### Model: Resource + Operation (secure by default)
 
-### Named Actions
+Every protected endpoint declares a **resource** and an **operation**:
 
-All capabilities are defined as constants in `config/permissions.py → Actions`:
-
-```
-register, register_master, verify, login, refresh_token   # public (no auth)
-read_profile, update_profile, logout
-list_users, read_user, create_user, update_user_role, delete_user
-read_settings, update_settings
+```python
+@require_auth(resource='users', operation='list')
+def list_users(event, context): ...
 ```
 
-### Default Permission Matrix
+At request time, `has_resource_permission(resource, operation, role)` checks the
+`app_settings` DynamoDB table for a record keyed `resource_permission:{resource}`.
+The record is a JSON object mapping operation names to lists of allowed roles.
 
-| Action | owner | admin | manager | supervisor | coordinator | staff | customer |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| logout | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| read_profile | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| update_profile | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| list_users | ✓ | ✓ | ✓ | ✓ | | | |
-| read_user | ✓ | ✓ | ✓ | ✓ | | | |
-| create_user | ✓ | ✓ | | | | | |
-| update_user_role | ✓ | ✓ | | | | | |
-| read_settings | ✓ | | | | | | |
-| update_settings | — | — | — | — | — | — | — |
+**Secure by default**: if no DB record exists for a resource, or the operation key
+is absent from the record, access is **denied** for everyone except `master`.
+`master` always bypasses all permission checks.
 
-`master` implicitly has **all** actions and cannot be modified.
+### Default Permission Matrix (seed values)
+
+Stored in `config/permissions.py → DEFAULT_RESOURCE_PERMISSIONS`. Written to DynamoDB
+by calling `POST /settings/permissions/seed` (master only, idempotent).
+
+| Resource | Operation | owner | admin | manager | supervisor | staff | customer |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| users | list | ✓ | ✓ | ✓ | ✓ | | |
+| users | read | ✓ | ✓ | ✓ | ✓ | | |
+| users | create | ✓ | ✓ | | | | |
+| users | update_role | ✓ | ✓ | | | | |
+| users | delete | — | — | — | — | — | — |
+| settings | read | ✓ | | | | | |
+| settings | update | — | — | — | — | — | — |
+| permissions | read | ✓ | | | | | |
+| permissions | update | — | — | — | — | — | — |
+
+`—` means master-only (empty list `[]` or operation absent from config).
+`master` always has access and cannot be listed in any permission config.
 
 ### Runtime Permission Changes
 
-The master can change permissions for any role at runtime without redeploying code:
+The master can change which roles access any resource/operation without redeploying:
 
 ```bash
-# Grant list_users to coordinator
-curl -X PUT $API_URL/settings/permissions/coordinator \
+# View all resource permission configs
+curl -X GET $API_URL/settings/permissions \
+  -H "Authorization: Bearer $MASTER_TOKEN"
+
+# View permissions for one resource
+curl -X GET $API_URL/settings/permissions/users \
+  -H "Authorization: Bearer $MASTER_TOKEN"
+
+# Full replace of a resource's operations
+# coordinator and staff can now list and read users; delete is still master-only
+curl -X PUT $API_URL/settings/permissions/users \
   -H "Authorization: Bearer $MASTER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"grant": ["list_users"]}'
+  -d '{
+    "list":        ["owner", "admin", "manager", "supervisor", "coordinator", "staff"],
+    "read":        ["owner", "admin", "manager", "supervisor", "coordinator", "staff"],
+    "create":      ["owner", "admin"],
+    "update_role": ["owner", "admin"],
+    "delete":      []
+  }'
 
-# Revoke update_user_role from admin
-curl -X PUT $API_URL/settings/permissions/admin \
-  -d '{"revoke": ["update_user_role"]}'
-
-# Full replace — set exact action set
-curl -X PUT $API_URL/settings/permissions/staff \
-  -d '{"actions": ["logout", "read_profile", "update_profile", "list_users"]}'
-
-# View all current permissions
-curl -X GET $API_URL/settings/permissions \
+# Clear in-memory cache on the current Lambda container after edits
+curl -X POST $API_URL/settings/permissions/cache/clear \
   -H "Authorization: Bearer $MASTER_TOKEN"
 ```
 
-Permissions are stored in the `app_settings` DynamoDB table under keys like `permissions:coordinator`.
-On cold start, the Lambda seeds DynamoDB with code defaults if no entry exists yet.
+Permissions are stored in `app_settings` under keys like `resource_permission:users`.
+Changes take effect immediately for new requests. Existing Lambda containers hold an
+in-memory cache; call `cache/clear` to force an immediate re-read.
 
-### Adding a New Action (for developers)
+### Adding a New Endpoint (for developers)
 
-1. Add a constant to `Actions` class in `config/permissions.py`
-2. Add it to the roles that should have it in `ROLE_PERMISSIONS`
-3. Use `@require_auth(action=Actions.YOUR_ACTION)` on the new handler
+1. Write the handler function in the appropriate `handlers/` file
+2. Apply `@require_auth(resource='<resource>', operation='<operation>')` to it
+3. Wire the route in `lambda_function.py → ROUTES`
+4. Add the API Gateway event + swagger path in `template.yaml`
+5. Add the new resource/operation to `DEFAULT_RESOURCE_PERMISSIONS` in `config/permissions.py`
+6. After deploying, call `POST /settings/permissions/seed` to write the new defaults to DynamoDB
+
+See `CLAUDE.md` for the full checklist.
 
 ---
 
@@ -245,8 +266,8 @@ All tables are named `{APP_NAME}-{ENVIRONMENT}-{table}` (e.g. `community-fund-pr
 | rate_limits | `limit_key` (HASH) | — | No |
 | app_settings | `setting_key` (HASH) | — | No |
 
-The `app_settings` table stores both general settings (e.g. `allow_public_signup`) and role
-permissions (e.g. `permissions:coordinator → ["logout", "read_profile", ...]`).
+The `app_settings` table stores both general settings (e.g. `allow_public_signup`) and resource
+permission configs (e.g. `resource_permission:users → {"list":["owner","admin",...], ...}`).
 
 ---
 
