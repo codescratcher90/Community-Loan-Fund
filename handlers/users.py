@@ -21,7 +21,7 @@ from utils.schema_validator import validate_request_body
 from utils.schemas import create_user_schema, update_role_schema
 from middleware import require_auth, get_current_user
 
-@require_auth(required_role='admin')
+@require_auth(resource='users', operation='list')
 def list_users(event, context):
     """
     GET /users
@@ -75,7 +75,7 @@ def list_users(event, context):
         return error_response("Failed to list users", status_code=500)
 
 
-@require_auth(required_role='admin')
+@require_auth(resource='users', operation='read')
 def get_user(event, context):
     """
     GET /users/:id
@@ -127,7 +127,7 @@ def get_user(event, context):
         return error_response("Failed to get user", status_code=500)
 
 
-@require_auth(required_role='admin')
+@require_auth(resource='users', operation='update_role')
 @validate_request_body(update_role_schema)
 def update_user_role(event, context):
     """
@@ -218,7 +218,7 @@ def update_user_role(event, context):
         return error_response("Failed to update user role", status_code=500)
 
 
-@require_auth(required_role='master')
+@require_auth(resource='users', operation='delete')
 def delete_user(event, context):
     """
     DELETE /users/:id
@@ -254,7 +254,7 @@ def delete_user(event, context):
         return error_response("Failed to delete user", status_code=500)
 
 
-@require_auth(required_role='admin')
+@require_auth(resource='users', operation='create')
 @validate_request_body(create_user_schema)
 def create_internal_user(event, context):
     """

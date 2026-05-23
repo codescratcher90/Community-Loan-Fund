@@ -192,12 +192,30 @@ Resources:
             RestApiId: !Ref AuthAPI
             Path: /settings/permissions
             Method: GET
-        UpdateRolePermissionsAPI:
+        GetResourcePermissionsAPI:
           Type: Api
           Properties:
             RestApiId: !Ref AuthAPI
-            Path: /settings/permissions/{role}
+            Path: /settings/permissions/{resource}
+            Method: GET
+        UpdateResourcePermissionsAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /settings/permissions/{resource}
             Method: PUT
+        SeedPermissionsAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /settings/permissions/seed
+            Method: POST
+        ClearPermissionsCacheAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /settings/permissions/cache/clear
+            Method: POST
 
   # ========================================
   # API Gateway
@@ -308,7 +326,24 @@ Resources:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
-          /settings/permissions/{role}:
+          /settings/permissions/seed:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /settings/permissions/cache/clear:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /settings/permissions/{resource}:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
             put:
               x-amazon-apigateway-integration:
                 httpMethod: POST

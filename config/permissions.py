@@ -1,18 +1,18 @@
 """
 Role-based Access Control
 -------------------------
-Two-layer system:
-  1. Role hierarchy  — numeric levels for "can user A modify user B?"
-  2. Action matrix   — explicit named actions for "can role X do Y?"
+Resource + Operation model. Secure by default — no DB record = denied.
 
-To add a new role:
-  1. Add it to ROLE_HIERARCHY with an appropriate level
-  2. Add it to INTERNAL_ROLES, EXTERNAL_ROLES, or SYSTEM_ROLES
-  3. Add its allowed actions to ROLE_PERMISSIONS
+Runtime permission checks are stored in DynamoDB (via utils.app_settings).
+This file defines the role hierarchy (for modification guards) and the
+DEFAULT_RESOURCE_PERMISSIONS seed template.
 
-To add a new action:
-  1. Add a constant to the Actions class
-  2. Add it to the roles that should have it in ROLE_PERMISSIONS
+To add a new endpoint:
+  1. Add its resource + operation to DEFAULT_RESOURCE_PERMISSIONS below
+     (or create a new resource key if it doesn't exist yet).
+  2. Decorate the handler: @require_auth(resource='your_resource', operation='your_op')
+  3. Call POST /settings/permissions/seed (master only) to push defaults to DynamoDB.
+     Until seeded, the endpoint is master-only (secure by default).
 """
 
 
@@ -31,104 +31,37 @@ ROLE_HIERARCHY = {
     'customer':    1,   # External user — global, no tenant
 }
 
-VALID_ROLES      = list(ROLE_HIERARCHY.keys())
-INTERNAL_ROLES   = ['owner', 'admin', 'manager', 'supervisor', 'coordinator', 'staff']
-EXTERNAL_ROLES   = ['customer']
-SYSTEM_ROLES     = ['master']
+VALID_ROLES    = list(ROLE_HIERARCHY.keys())
+INTERNAL_ROLES = ['owner', 'admin', 'manager', 'supervisor', 'coordinator', 'staff']
+EXTERNAL_ROLES = ['customer']
+SYSTEM_ROLES   = ['master']
 
 
 # ---------------------------------------------------------------------------
-# Named Actions
-# Add a constant here when you introduce a new capability.
+# Default Resource → Operation → Allowed Roles
+#
+# Written to DynamoDB once by POST /settings/permissions/seed.
+# Runtime checks read from DynamoDB — NOT from this dict.
+# Empty list [] = master only (master always bypasses the check).
+#
+# Add a new resource/operation here when you add a new endpoint group.
 # ---------------------------------------------------------------------------
-class Actions:
-    # Public (no auth needed)
-    REGISTER        = 'register'
-    REGISTER_MASTER = 'register_master'
-    VERIFY          = 'verify'
-    LOGIN           = 'login'
-    REFRESH_TOKEN   = 'refresh_token'
-
-    # Own profile
-    READ_PROFILE    = 'read_profile'
-    UPDATE_PROFILE  = 'update_profile'
-    LOGOUT          = 'logout'
-
-    # User management
-    LIST_USERS      = 'list_users'
-    READ_USER       = 'read_user'
-    CREATE_USER     = 'create_user'
-    UPDATE_USER_ROLE = 'update_user_role'
-    DELETE_USER     = 'delete_user'
-
-    # Settings
-    READ_SETTINGS   = 'read_settings'
-    UPDATE_SETTINGS = 'update_settings'
-
-
-# Actions that require no authentication at all
-PUBLIC_ACTIONS = {
-    Actions.REGISTER,
-    Actions.REGISTER_MASTER,
-    Actions.VERIFY,
-    Actions.LOGIN,
-    Actions.REFRESH_TOKEN,
-}
-
-
-# ---------------------------------------------------------------------------
-# Role → Action Matrix
-# master implicitly has ALL actions.
-# To expand a role's access, add actions to its set here.
-# ---------------------------------------------------------------------------
-ROLE_PERMISSIONS: dict[str, set[str]] = {
-    'owner': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
-        Actions.LIST_USERS,
-        Actions.READ_USER,
-        Actions.CREATE_USER,
-        Actions.UPDATE_USER_ROLE,
-        Actions.READ_SETTINGS,
+DEFAULT_RESOURCE_PERMISSIONS: dict[str, dict[str, list]] = {
+    'users': {
+        'list':        ['owner', 'admin', 'manager', 'supervisor'],
+        'read':        ['owner', 'admin', 'manager', 'supervisor'],
+        'create':      ['owner', 'admin'],
+        'update_role': ['owner', 'admin'],
+        'delete':      [],   # master only
     },
-    'admin': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
-        Actions.LIST_USERS,
-        Actions.READ_USER,
-        Actions.CREATE_USER,
-        Actions.UPDATE_USER_ROLE,
+    'settings': {
+        'read':   ['owner'],
+        'update': [],        # master only
     },
-    'manager': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
-        Actions.LIST_USERS,
-        Actions.READ_USER,
-    },
-    'supervisor': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
-        Actions.LIST_USERS,
-        Actions.READ_USER,
-    },
-    'coordinator': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
-    },
-    'staff': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
-    },
-    'customer': {
-        Actions.LOGOUT,
-        Actions.READ_PROFILE,
-        Actions.UPDATE_PROFILE,
+    'permissions': {
+        'read':   ['owner'],
+        'update': [],        # master only
+        # 'seed' and 'cache_clear' are intentionally absent → master only
     },
 }
 
@@ -137,46 +70,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 # Public API
 # ---------------------------------------------------------------------------
 
-def can_perform(role: str, action: str) -> bool:
-    """
-    Check whether a role is allowed to perform a named action.
-
-    Resolution order:
-      1. Public actions — always allowed, no role needed.
-      2. master role   — always allowed.
-      3. DynamoDB      — live permissions stored by the master at runtime.
-      4. Code defaults — ROLE_PERMISSIONS dict above (fallback if DB unreachable).
-    """
-    if action in PUBLIC_ACTIONS:
-        return True
-    if role == 'master':
-        return True
-
-    # Lazy import avoids circular dependency (utils imports config.settings, not permissions)
-    try:
-        from utils.app_settings import get_role_permissions
-        db_perms = get_role_permissions(role)
-        if db_perms is not None:
-            return action in db_perms
-    except Exception:
-        pass
-
-    return action in ROLE_PERMISSIONS.get(role, set())
-
-
-def get_all_actions() -> set:
-    """Return every action name defined in the Actions class."""
-    return {v for k, v in vars(Actions).items() if not k.startswith('_')}
-
-
 def has_permission(user_role: str, required_role: str) -> bool:
-    """
-    Hierarchy check: is user_role at least as privileged as required_role?
-    Kept for backward compatibility with existing @require_auth(required_role=...) calls.
-    """
+    """Hierarchy check — kept for can_modify_role and backward compat."""
     if required_role is None:
         return True
-    user_level    = ROLE_HIERARCHY.get(user_role, 0)
+    user_level     = ROLE_HIERARCHY.get(user_role, 0)
     required_level = ROLE_HIERARCHY.get(required_role, 0)
     return user_level >= required_level
 
@@ -184,7 +82,7 @@ def has_permission(user_role: str, required_role: str) -> bool:
 def can_modify_role(modifier_role: str, target_role: str, new_role: str) -> bool:
     """
     Can modifier change target's role to new_role?
-    Rules: master can do anything; others cannot touch peers or superiors,
+    master can do anything; others cannot touch peers or superiors,
     and cannot promote anyone to their own level or above.
     """
     modifier_level = ROLE_HIERARCHY.get(modifier_role, 0)
