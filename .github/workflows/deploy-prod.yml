@@ -67,6 +67,7 @@ jobs:
               JWTSecret=${{ secrets.JWT_SECRET_PROD }} \
               RefreshTokenSecret=${{ secrets.REFRESH_TOKEN_SECRET_PROD }} \
               MasterSecretKey=${{ secrets.MASTER_SECRET_KEY_PROD }} \
+              FromEmail=${{ vars.FROM_EMAIL }} \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 

@@ -70,6 +70,7 @@ Go to **Settings → Secrets and variables → Actions**.
 |---|---|---|
 | `APP_NAME` | `basic-auth` | Determines all resource names (see [APP_NAME guide](#app_name--white-label-deployments)) |
 | `AWS_REGION` | `eu-north-1` | Not a secret — stored as variable so it appears unmasked in deployment URLs |
+| `FROM_EMAIL` | `noreply@yourdomain.com` | SES verified sender address for OTP emails |
 
 #### Secrets tab (sensitive — masked in logs)
 
@@ -93,7 +94,22 @@ Go to **Settings → Secrets and variables → Actions**.
 | `REFRESH_TOKEN_SECRET_PROD` | Production refresh secret |
 | `MASTER_SECRET_KEY_PROD` | Production master secret |
 
-### Step 4 — Configure GitHub Environment (Production Only)
+### Step 4 — Verify Your Sender Email in SES
+
+OTP emails are sent via AWS Simple Email Service. You need to verify the address you put in `FROM_EMAIL` before emails will be delivered.
+
+1. AWS Console → **SES** → **Verified identities** → **Create identity**
+2. Choose **Email address**, enter the same address you set for `FROM_EMAIL`
+3. AWS sends a confirmation email — click the link
+4. The identity shows **Verified** — done
+
+**SES sandbox mode** (default for new accounts): both the *sender* (`FROM_EMAIL`) and the *recipient* must be verified. This is fine for dev testing with your own email. To send to any address (production), request production access:
+
+AWS Console → SES → **Account dashboard** → **Request production access** → fill the form (approved within 24 hours).
+
+> If `FROM_EMAIL` is not set or the address is not verified, registration returns a 500 error and rolls back the user record so the user can retry once SES is configured.
+
+### Step 5 — Configure GitHub Environment (Production Only)
 
 1. Settings → **Environments** → **New environment** → name it `production`
 2. Add protection rules:
@@ -101,7 +117,7 @@ Go to **Settings → Secrets and variables → Actions**.
    - Wait timer: 5 minutes
    - Deployment branches: only protected branches
 
-### Step 5 — Run a Workflow
+### Step 6 — Run a Workflow
 
 All workflows are **manual** (`workflow_dispatch`):
 
