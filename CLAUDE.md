@@ -36,32 +36,34 @@ Basic-Auth/
 │
 ├── config/
 │   ├── settings.py           # Config class — reads all env vars
-│   └── permissions.py        # Role permission matrix
+│   ├── otp.py                # OTPType constants, EMAIL/PHONE_OTP_TYPES, OTP_RESEND_COOLDOWN
+│   └── permissions.py        # Role hierarchy + DEFAULT_RESOURCE_PERMISSIONS
 │
 ├── handlers/                 # One file per feature area
 │   ├── register.py           # POST /auth/register, POST /auth/register-master
 │   ├── login.py              # POST /auth/login
 │   ├── logout.py             # POST /auth/logout
 │   ├── refresh_token.py      # POST /auth/refresh
-│   ├── verify.py             # POST /auth/verify
+│   ├── verify.py             # POST /auth/verify, POST /auth/resend-otp
 │   ├── profile.py            # GET/PUT /auth/me
 │   ├── users.py              # GET/POST/PUT/DELETE /users and /users/{id}
-│   └── settings.py           # GET/PUT /settings
+│   ├── settings.py           # GET/PUT /settings
+│   └── permissions.py        # GET/PUT /permissions and /permissions/{resource}
 │
 ├── middleware/
-│   ├── auth.py               # JWT validation decorators (@require_auth, @require_role)
+│   ├── auth.py               # @require_auth decorator (JWT validation + RBAC)
 │   └── rate_limiting.py      # Per-IP and per-user rate limit decorators
 │
 ├── utils/
 │   ├── database.py           # DynamoDB wrappers: UserDB, RefreshTokenDB, etc.
 │   ├── jwt_utils.py          # Token creation and validation
 │   ├── password.py           # bcrypt hash/verify
-│   ├── verification.py       # OTP generation + send (SES/SNS — stubs for now)
+│   ├── verification.py       # OTP generation, SES email delivery, masking helpers
 │   ├── responses.py          # Standardised success_response / error_response
-│   ├── validators.py         # Email, phone, password validators
+│   ├── validators.py         # Email, phone, password, name validators
 │   ├── schemas.py            # Request body schemas (field definitions)
-│   ├── schema_validator.py   # @validate_request_body decorator
-│   └── app_settings.py       # Runtime settings from DynamoDB AppSettings table
+│   ├── schema_validator.py   # SchemaField, Schema, @validate_request_body
+│   └── app_settings.py       # Runtime settings + resource permissions (60 s cache)
 │
 └── .github/workflows/
     ├── deploy-dev.yml
@@ -101,21 +103,26 @@ All responses share a standard envelope:
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | /auth/register | None | Public user registration |
-| POST | /auth/register-master | Secret key | Create master admin user |
-| POST | /auth/verify | None | Submit email/SMS OTP code |
-| POST | /auth/login | None | Login, returns access + refresh tokens |
-| POST | /auth/refresh | Refresh token | Get new access token |
+| POST | /auth/register | None | Public registration — email or phone (at least one) |
+| POST | /auth/register-master | Secret key in body | Create master admin user |
+| POST | /auth/verify | None | Submit OTP code (13 types via `otp_type`) |
+| POST | /auth/resend-otp | None | Resend a pending OTP (60 s cooldown) |
+| POST | /auth/login | None | Login by email or phone — returns access + refresh tokens |
+| POST | /auth/refresh | Refresh token in body | Get new access token |
 | POST | /auth/logout | JWT | Revoke refresh token |
 | GET | /auth/me | JWT | Get own profile |
-| PUT | /auth/me | JWT | Update own profile |
-| GET | /users | JWT (admin+) | List users |
+| PUT | /auth/me | JWT | Update profile (email/phone changes trigger OTP) |
+| GET | /users | JWT (owner+) | List users |
 | POST | /users | JWT (admin+) | Create internal user |
-| GET | /users/{id} | JWT (admin+) | Get user by ID |
-| PUT | /users/{id}/role | JWT (master) | Change user role |
+| GET | /users/{id} | JWT (owner+) | Get user by ID |
+| PUT | /users/{id}/role | JWT (owner+) | Change user role |
 | DELETE | /users/{id} | JWT (master) | Delete user |
-| GET | /settings | JWT (master) | Get app settings |
+| GET | /settings | JWT (owner+) | Get app settings |
 | PUT | /settings | JWT (master) | Update app settings |
+| GET | /permissions | JWT (master) | List all resource permission configs |
+| GET | /permissions/{resource} | JWT (master) | Get one resource's operation→role map |
+| PUT | /permissions/{resource} | JWT (master) | Replace a resource's config |
+| POST | /permissions/seed | JWT (master) | Write code defaults to DynamoDB |
 
 ---
 
@@ -136,9 +143,9 @@ All tables are named `{APP_NAME}-{ENVIRONMENT}-{table}`, e.g. `community-fund-pr
 
 | Table | Primary Key | GSI | TTL |
 |-------|-------------|-----|-----|
-| users | user_id (HASH) | email-index | No |
+| users | user_id (HASH) | email-index, phone-index (sparse) | No |
 | refresh_tokens | token (HASH) | user_id-index | Yes (expires_at) |
-| verification_codes | user_id (HASH) + code_type (RANGE) | No | No (bug — see Next Steps) |
+| verification_codes | user_id (HASH) + code_type (RANGE) | No | No |
 | login_attempts | ip_address (HASH) + timestamp (RANGE) | No | No |
 | rate_limits | limit_key (HASH) | No | No |
 | app_settings | setting_key (HASH) | No | No |
@@ -230,23 +237,17 @@ invoices, etc.) adds handlers, schemas, routes, and SAM events. Design every pie
 added to, not rewritten.
 
 **Patterns to follow when adding an endpoint:**
-1. Add named action constant to `Actions` class in `config/permissions.py`
-2. Add it to the relevant roles in `ROLE_PERMISSIONS` (code default)
-3. Create schema in `utils/schemas.py`, register it in `ROUTE_SCHEMAS`
-4. Write handler in the appropriate `handlers/` file
-5. Add route to `ROUTES` dict in `lambda_function.py`
-6. Add API Gateway event + swagger path in `template.yaml`
-7. Use `@require_auth(action=Actions.YOUR_ACTION)` — never hardcode role strings
+1. Add a resource + operation pair to `DEFAULT_RESOURCE_PERMISSIONS` in `config/permissions.py`
+2. Create schema in `utils/schemas.py`, register it in `ROUTE_SCHEMAS`
+3. Write handler in the appropriate `handlers/` file
+4. Add route to `ROUTES` dict in `lambda_function.py`
+5. Add API Gateway event + swagger path in `template.yaml`
+6. Use `@require_auth(resource='<resource>', operation='<operation>')` — never hardcode role strings
+7. After deploying, call `POST /permissions/seed` to write new defaults to DynamoDB
 
-**Permission system will evolve.** The current model (role → flat action list) works for
-auth-level permissions. As the system grows into domain resources (students, bookings,
-products), consider migrating to a resource-centric model:
-`PERMISSION#resource → {create:[roles], read:[roles], update:[roles], delete:[roles]}`
-This is more intuitive for product teams and scales better across many resources.
-
-**Cache invalidation will matter more at scale.** Warm Lambda containers cache permissions
-in memory. A cache-clear endpoint (`POST /settings/permissions/cache/clear`) should be
-added before the permissions system is used heavily in production.
+**Cache behaviour.** Permission changes via the API take effect immediately (write-through
+cache with fresh TTL). Manual DynamoDB edits propagate to warm Lambda containers within
+60 seconds. Settings cache works the same way.
 
 **Secure by default.** Any new permission check that has no DB record and no code default
 should **deny**, not silently allow. Never add a fallback that grants access.
@@ -259,9 +260,9 @@ See `docs/next-steps.md` for the full prioritised list. Critical items:
 
 1. `lambda_function.py` logs the master secret key and full request body to CloudWatch on every request — remove all debug `print` statements before handling real users
 2. `LoginAttemptDB.count_recent_attempts` queries a GSI that does not exist — remove the `IndexName` parameter
-3. Verification codes use `random` (not cryptographically secure) — switch to `secrets`
-4. Email and SMS are not actually sent — SES/SNS stubs need implementing
-5. `datetime.utcnow()` is deprecated in Python 3.12 — replace with `datetime.now(timezone.utc)`
+3. SMS OTP delivery is still a stub (`send_sms_otp` logs to CloudWatch, does not call SNS) — implement SNS integration
+4. `datetime.utcnow()` is deprecated in Python 3.12 — replace with `datetime.now(timezone.utc)`
+5. `forgot_password` OTP verification sets a `password_reset_verified` flag but there is no `POST /auth/reset-password` endpoint yet to consume it
 
 ---
 

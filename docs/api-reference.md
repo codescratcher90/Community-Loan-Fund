@@ -23,7 +23,8 @@ All responses share this envelope:
 |---|---|---|---|
 | POST | `/auth/register` | None | Public user registration |
 | POST | `/auth/register-master` | Secret key in body | Create master user |
-| POST | `/auth/verify` | None | Submit email/SMS OTP code |
+| POST | `/auth/verify` | None | Submit OTP code |
+| POST | `/auth/resend-otp` | None | Resend a pending OTP |
 | POST | `/auth/login` | None | Login — returns access + refresh tokens |
 | POST | `/auth/refresh` | Refresh token in body | Get new access token |
 | POST | `/auth/logout` | Bearer token | Revoke refresh token |
@@ -68,6 +69,11 @@ Default roles shown are the seeded values and can be changed at runtime.
 <details>
 <summary><b>POST /auth/register</b></summary>
 
+At least one of `email` or `phone` must be provided — you do not need both. `password`, `first_name`, and `last_name` are always required.
+
+Email and phone are masked in the response. `is_verified` is `false` when the `require_otp_on_registration` setting is enabled (the default).
+
+**Email-only registration**
 ```bash
 curl -X POST $API_URL/auth/register \
   -H "Content-Type: application/json" \
@@ -75,8 +81,7 @@ curl -X POST $API_URL/auth/register \
     "email": "user@example.com",
     "password": "SecurePass123",
     "first_name": "John",
-    "last_name": "Doe",
-    "phone": "+1234567890"
+    "last_name": "Doe"
   }'
 ```
 
@@ -84,15 +89,83 @@ curl -X POST $API_URL/auth/register \
 {
   "success": true,
   "status_code": 201,
-  "message": "Registration successful. Please verify your email and phone.",
+  "message": "Verification code sent via email (us***@example.com).",
   "data": {
     "user_id": "550e8400-e29b-41d4-a716-446655440000",
-    "email": "user@example.com",
+    "email": "us***@example.com",
+    "phone": null,
     "first_name": "John",
     "last_name": "Doe",
     "role": "customer",
+    "email_verified": false,
+    "phone_verified": false,
     "is_verified": false,
-    "created_at": "2025-12-26T10:30:00.000000"
+    "created_at": "2025-05-23T10:30:00.000000"
+  }
+}
+```
+
+**Phone-only registration**
+```bash
+curl -X POST $API_URL/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+1234567890",
+    "password": "SecurePass123",
+    "first_name": "John",
+    "last_name": "Doe"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "status_code": 201,
+  "message": "Verification code sent via SMS (***890).",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": null,
+    "phone": "***890",
+    "first_name": "John",
+    "last_name": "Doe",
+    "role": "customer",
+    "email_verified": false,
+    "phone_verified": false,
+    "is_verified": false,
+    "created_at": "2025-05-23T10:30:00.000000"
+  }
+}
+```
+
+**Email + phone registration**
+```bash
+curl -X POST $API_URL/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "phone": "+1234567890",
+    "password": "SecurePass123",
+    "first_name": "John",
+    "last_name": "Doe"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "status_code": 201,
+  "message": "Verification code sent via email (us***@example.com).",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "us***@example.com",
+    "phone": "***890",
+    "first_name": "John",
+    "last_name": "Doe",
+    "role": "customer",
+    "email_verified": false,
+    "phone_verified": false,
+    "is_verified": false,
+    "created_at": "2025-05-23T10:30:00.000000"
   }
 }
 ```
@@ -131,17 +204,25 @@ curl -X POST $API_URL/auth/register-master \
 <details>
 <summary><b>POST /auth/verify</b></summary>
 
+`otp_type` must be one of: `registration_email`, `registration_phone`, `login_otp`, `2fa`, `forgot_password`, `account_recovery`, `add_email`, `add_phone`, `change_email`, `change_phone`, `sensitive_action`, `device_verification`, `delete_account`.
+
+Response `data` varies by `otp_type`:
+- `registration_email` / `registration_phone` → `user_id`, `otp_type`, `email_verified`, `phone_verified` (if applicable), `is_verified`
+- `add_email` / `change_email` → `user_id`, `otp_type`, `email` (masked), `email_verified: true`, `is_verified`
+- `add_phone` / `change_phone` → `user_id`, `otp_type`, `phone` (masked), `phone_verified: true`, `is_verified`
+- `forgot_password` → `user_id`, `otp_type`, `password_reset_expires_at` (ISO timestamp)
+- All other types → `user_id`, `otp_type`
+
+**Example — registration_email**
 ```bash
 curl -X POST $API_URL/auth/verify \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "550e8400-...",
     "code": "123456",
-    "code_type": "email"
+    "otp_type": "registration_email"
   }'
 ```
-
-`code_type` is `"email"` or `"sms"`. The user is fully verified when both email and phone (if provided) are verified.
 
 ```json
 {
@@ -150,10 +231,74 @@ curl -X POST $API_URL/auth/verify \
   "message": "Email verified successfully",
   "data": {
     "user_id": "550e8400-...",
-    "is_verified": true,
+    "otp_type": "registration_email",
     "email_verified": true,
-    "phone_verified": true
+    "phone_verified": false,
+    "is_verified": true
   }
+}
+```
+
+**Example — change_email**
+```bash
+curl -X POST $API_URL/auth/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "550e8400-...",
+    "code": "654321",
+    "otp_type": "change_email"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Email updated successfully",
+  "data": {
+    "user_id": "550e8400-...",
+    "otp_type": "change_email",
+    "email": "ne***@newdomain.com",
+    "email_verified": true,
+    "is_verified": true
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>POST /auth/resend-otp</b></summary>
+
+Resends a pending OTP for the given user and `otp_type`. No authentication required.
+
+```bash
+curl -X POST $API_URL/auth/resend-otp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "550e8400-...",
+    "otp_type": "registration_email"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "message": "Verification code resent",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "otp_type": "registration_email",
+    "sent_to": "us***@example.com",
+    "resend_after": "2025-05-23T10:31:00.000000"
+  }
+}
+```
+
+**429 — cooldown has not passed**
+```json
+{
+  "success": false,
+  "status_code": 429,
+  "message": "Please wait 45 seconds before requesting another code."
 }
 ```
 </details>
@@ -161,12 +306,23 @@ curl -X POST $API_URL/auth/verify \
 <details>
 <summary><b>POST /auth/login</b></summary>
 
+Accepts `email` or `phone` (at least one required) plus `password`. If the contact used to log in is unverified, a `403 VERIFICATION_REQUIRED` error is returned and a new OTP is automatically sent (if the cooldown has passed).
+
+**Login with email**
 ```bash
 curl -X POST $API_URL/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com", "password": "SecurePass123"}'
 ```
 
+**Login with phone**
+```bash
+curl -X POST $API_URL/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "+1234567890", "password": "SecurePass123"}'
+```
+
+**200 — success**
 ```json
 {
   "success": true,
@@ -190,6 +346,23 @@ curl -X POST $API_URL/auth/login \
 ```
 
 Access token expires in 30 min (1800 s). Refresh token expires in 30 days.
+
+**403 — contact not verified**
+```json
+{
+  "success": false,
+  "status_code": 403,
+  "message": "Email address not verified. A new verification code has been sent.",
+  "error": {
+    "code": "VERIFICATION_REQUIRED",
+    "details": {
+      "verification_required": true,
+      "otp_type": "registration_email",
+      "sent_to": "us***@example.com"
+    }
+  }
+}
+```
 </details>
 
 <details>
@@ -244,30 +417,36 @@ curl -X GET $API_URL/auth/me -H "Authorization: Bearer $ACCESS_TOKEN"
   "data": {
     "user_id": "550e8400-...",
     "email": "user@example.com",
+    "phone": null,
     "first_name": "John",
     "last_name": "Doe",
-    "phone": "+1234567890",
     "role": "customer",
+    "email_verified": true,
+    "phone_verified": false,
     "is_verified": true,
     "is_locked": false,
-    "created_at": "2025-12-26T10:30:00.000000",
-    "updated_at": "2025-12-26T10:30:00.000000"
+    "created_at": "2025-05-23T10:30:00.000000",
+    "updated_at": "2025-05-23T10:30:00.000000"
   }
 }
 ```
+
+`email` and `phone` may be `null` if the user has not provided them.
 </details>
 
 <details>
 <summary><b>PUT /auth/me — update profile</b></summary>
 
+Name and password changes apply immediately. When `email` or `phone` is included in the body, the value is **not** updated directly — instead an OTP is sent to the new address/number and `pending_verifications` is returned in the response. The change takes effect once the OTP is verified.
+
 ```bash
-# Update name / phone
+# Update name only (applies immediately)
 curl -X PUT $API_URL/auth/me \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"first_name": "Johnny", "phone": "+1987654321"}'
+  -d '{"first_name": "Johnny"}'
 
-# Change password
+# Change password (applies immediately — requires current_password)
 curl -X PUT $API_URL/auth/me \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
@@ -275,6 +454,27 @@ curl -X PUT $API_URL/auth/me \
 ```
 
 Changing password requires `current_password`.
+
+**Email change request — OTP sent, not applied yet**
+```bash
+curl -X PUT $API_URL/auth/me \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "newemail@example.com"}'
+```
+
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "message": "Verification code sent to ne***@example.com. Verify to complete the change.",
+  "data": {
+    "pending_verifications": ["change_email"]
+  }
+}
+```
+
+Once the user submits the OTP via `POST /auth/verify` with `otp_type: "change_email"`, the email is updated and `email_verified` is set to `true`. The same flow applies to phone changes (`change_phone` / `add_phone`).
 </details>
 
 <details>
@@ -297,7 +497,7 @@ curl -X GET "$API_URL/users?limit=100" -H "Authorization: Bearer $ACCESS_TOKEN"
         "tenant_id": "hotel-abc-123",
         "is_verified": true,
         "is_locked": false,
-        "created_at": "2025-12-26T11:00:00.000000"
+        "created_at": "2025-05-23T11:00:00.000000"
       }
     ],
     "count": 1
@@ -567,6 +767,28 @@ curl -X POST $API_URL/permissions/seed -H "Authorization: Bearer $MASTER_TOKEN"
   "error": {"code": "FORBIDDEN"}
 }
 ```
+
+### 403 Verification Required
+
+Returned by `POST /auth/login` when the contact used to log in has not yet been verified. A new OTP is automatically sent if the cooldown has passed.
+
+```json
+{
+  "success": false,
+  "status_code": 403,
+  "message": "Email address not verified. A new verification code has been sent.",
+  "error": {
+    "code": "VERIFICATION_REQUIRED",
+    "details": {
+      "verification_required": true,
+      "otp_type": "registration_email",
+      "sent_to": "us***@example.com"
+    }
+  }
+}
+```
+
+Use `POST /auth/resend-otp` to request a new code if the cooldown has not yet passed.
 
 ### 422 Validation Error
 ```json
