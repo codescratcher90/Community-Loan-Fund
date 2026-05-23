@@ -24,7 +24,7 @@ from handlers import (
     delete_user,
     create_internal_user
 )
-from handlers.settings import get_settings, update_settings
+from handlers.settings import get_settings, update_settings, get_permissions, update_role_permissions
 from utils import error_response
 
 # Load environment variables from .env if running locally
@@ -59,7 +59,9 @@ ROUTES = {
     'PUT /users/{id}/role': update_user_role,
     'DELETE /users/{id}': delete_user,
     'GET /settings': get_settings,
-    'PUT /settings': update_settings
+    'PUT /settings': update_settings,
+    'GET /settings/permissions': get_permissions,
+    'PUT /settings/permissions/{role}': update_role_permissions,
 }
 
 

@@ -48,17 +48,17 @@ def _convert_dynamodb_types(value: Any) -> Any:
 
 def initialize_settings():
     """
-    Initialize settings table with default values if not already initialized
-    This should be called once during deployment or first run
+    Initialize settings table with default values if not already initialized.
+    Also seeds default role permissions if they have not been stored yet.
+    Called once on cold start; safe to call multiple times.
     """
     try:
-        # Check if settings are already initialized
         response = settings_table.get_item(Key={'setting_key': '_initialized'})
         if 'Item' in response:
             print("[INFO] Settings already initialized")
+            _seed_missing_permissions()
             return
 
-        # Initialize all default settings
         print("[INFO] Initializing default settings...")
         for key, value in DEFAULT_SETTINGS.items():
             settings_table.put_item(Item={
@@ -67,11 +67,30 @@ def initialize_settings():
                 'setting_type': type(value).__name__
             })
 
+        _seed_missing_permissions()
         print("[INFO] Default settings initialized successfully")
 
     except Exception as e:
         print(f"[ERROR] Failed to initialize settings: {str(e)}")
         raise
+
+
+def _seed_missing_permissions():
+    """Write code-default permissions to DynamoDB for any role not yet stored."""
+    try:
+        from config.permissions import ROLE_PERMISSIONS
+        for role, actions in ROLE_PERMISSIONS.items():
+            key = f'permissions:{role}'
+            existing = settings_table.get_item(Key={'setting_key': key})
+            if 'Item' not in existing:
+                settings_table.put_item(Item={
+                    'setting_key': key,
+                    'setting_value': list(actions),
+                    'setting_type': 'list'
+                })
+                print(f"[INFO] Seeded default permissions for role: {role}")
+    except Exception as e:
+        print(f"[WARNING] Could not seed permissions: {str(e)}")
 
 
 def load_settings() -> Dict[str, Any]:
@@ -175,10 +194,69 @@ def update_settings(settings: Dict[str, Any]) -> None:
         update_setting(key, value)
 
 
+def get_role_permissions(role: str):
+    """
+    Return the set of allowed actions for a role, loaded from DynamoDB.
+    Returns None if no entry exists (caller should fall back to code defaults).
+    """
+    value = get_setting(f'permissions:{role}')
+    if value is None:
+        return None
+    return set(value) if isinstance(value, list) else None
+
+
+def set_role_permissions(role: str, actions: set) -> None:
+    """Replace the entire action set for a role."""
+    update_setting(f'permissions:{role}', list(actions))
+
+
+def grant_role_actions(role: str, actions_to_grant: set) -> set:
+    """Add actions to a role. Returns the updated full action set."""
+    current = get_role_permissions(role)
+    if current is None:
+        from config.permissions import ROLE_PERMISSIONS
+        current = set(ROLE_PERMISSIONS.get(role, set()))
+    updated = current | actions_to_grant
+    set_role_permissions(role, updated)
+    return updated
+
+
+def revoke_role_actions(role: str, actions_to_revoke: set) -> set:
+    """Remove actions from a role. Returns the updated full action set."""
+    current = get_role_permissions(role)
+    if current is None:
+        from config.permissions import ROLE_PERMISSIONS
+        current = set(ROLE_PERMISSIONS.get(role, set()))
+    updated = current - actions_to_revoke
+    set_role_permissions(role, updated)
+    return updated
+
+
+def get_all_role_permissions() -> dict:
+    """
+    Return permissions for every non-master role.
+    Each entry indicates whether its source is 'database' or 'default'.
+    """
+    from config.permissions import ROLE_PERMISSIONS, VALID_ROLES
+    result = {}
+    for role in VALID_ROLES:
+        if role == 'master':
+            continue
+        db_perms = get_role_permissions(role)
+        if db_perms is not None:
+            result[role] = {'actions': sorted(db_perms), 'source': 'database'}
+        else:
+            result[role] = {
+                'actions': sorted(ROLE_PERMISSIONS.get(role, set())),
+                'source': 'default',
+            }
+    return result
+
+
 def clear_cache():
     """
-    Clear the settings cache
-    Next get_setting() call will reload from DynamoDB
+    Clear the settings cache.
+    Next get_setting() call will reload from DynamoDB.
     """
     global _settings_cache, _cache_initialized
     _settings_cache = {}
@@ -219,3 +297,23 @@ class AppSettingsDB:
     def clear_cache() -> None:
         """Clear settings cache"""
         clear_cache()
+
+    @staticmethod
+    def get_role_permissions(role: str):
+        return get_role_permissions(role)
+
+    @staticmethod
+    def set_role_permissions(role: str, actions: set) -> None:
+        set_role_permissions(role, actions)
+
+    @staticmethod
+    def grant_role_actions(role: str, actions_to_grant: set) -> set:
+        return grant_role_actions(role, actions_to_grant)
+
+    @staticmethod
+    def revoke_role_actions(role: str, actions_to_revoke: set) -> set:
+        return revoke_role_actions(role, actions_to_revoke)
+
+    @staticmethod
+    def get_all_role_permissions() -> dict:
+        return get_all_role_permissions()

@@ -186,6 +186,18 @@ Resources:
             RestApiId: !Ref AuthAPI
             Path: /settings
             Method: PUT
+        GetPermissionsAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /settings/permissions
+            Method: GET
+        UpdateRolePermissionsAPI:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthAPI
+            Path: /settings/permissions/{role}
+            Method: PUT
 
   # ========================================
   # API Gateway
@@ -285,6 +297,18 @@ Resources:
                 httpMethod: POST
                 type: aws_proxy
                 uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+            put:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /settings/permissions:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+          /settings/permissions/{role}:
             put:
               x-amazon-apigateway-integration:
                 httpMethod: POST

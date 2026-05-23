@@ -140,13 +140,33 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 def can_perform(role: str, action: str) -> bool:
     """
     Check whether a role is allowed to perform a named action.
-    master can do everything. Public actions need no role at all.
+
+    Resolution order:
+      1. Public actions — always allowed, no role needed.
+      2. master role   — always allowed.
+      3. DynamoDB      — live permissions stored by the master at runtime.
+      4. Code defaults — ROLE_PERMISSIONS dict above (fallback if DB unreachable).
     """
     if action in PUBLIC_ACTIONS:
         return True
     if role == 'master':
         return True
+
+    # Lazy import avoids circular dependency (utils imports config.settings, not permissions)
+    try:
+        from utils.app_settings import get_role_permissions
+        db_perms = get_role_permissions(role)
+        if db_perms is not None:
+            return action in db_perms
+    except Exception:
+        pass
+
     return action in ROLE_PERMISSIONS.get(role, set())
+
+
+def get_all_actions() -> set:
+    """Return every action name defined in the Actions class."""
+    return {v for k, v in vars(Actions).items() if not k.startswith('_')}
 
 
 def has_permission(user_role: str, required_role: str) -> bool:
